@@ -137,5 +137,4 @@ save
 .idea/*
 .DS_Store
 playground
-data
 notebooks
