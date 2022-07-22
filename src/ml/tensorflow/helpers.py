@@ -1,13 +1,13 @@
 import copy
+import os
 import time
 
 import tensorflow as tf
 from keras import layers as L
 from keras.models import Sequential
 
-from src.utils import log
+from src.ml.pytorch.models import *
 from .aggregators import average, median, aksel, krum
-from .utils import flatten_grads, unflatten_grad
 
 
 def initialize_models(model_name, input_shape, nbr_models=1, same=False):
@@ -29,6 +29,7 @@ def initialize_models(model_name, input_shape, nbr_models=1, same=False):
 
 
 def build_model(model_name, input_shape):
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
     metrics = [tf.keras.metrics.RootMeanSquaredError(), 'mae']
     model = Sequential()
     if model_name == 'RNN':
@@ -44,75 +45,73 @@ def build_model(model_name, input_shape):
     # model.add(L.Dropout(0.2))
     model.add(L.Dense(1))
     model.compile(optimizer='adam', loss='mse', metrics=metrics)
-    model.summary()
-    print(model.summary())
-    print("--------------------")
     return model
 
 
 def model_fit(peer):
-    peer.model.train(peer.train.dataset, peer.train.targets)
-    peer.model.val(peer.val.dataset, peer.val.targets)
-    peer.model.test(peer.test.dataset, peer.test.targets)
-    history = peer.model.fit(
-        lr=peer.params.lr,
-        momentum=peer.params.momentum,
-        max_epoch=peer.params.epochs,
-        batch_size=peer.params.batch_size,
-        evaluation=True,
-        logger=log
-    )
-    return history
-
-
-def train_for_x_epoch(peer, batches=1, evaluate=False):
-    # TODO improve FedAvg for numpy
-    if peer.model.has_no_data():
-        peer.model.train(peer.train.dataset, peer.train.targets)
-        peer.model.val(peer.val.dataset, peer.val.targets)
-        peer.model.test(peer.test.dataset, peer.test.targets)
-    return peer.model.improve(batches, evaluate)
-
-
-def evaluate_model(model, dataholder, one_batch=False, device=None):
-    loss, acc = model.evaluate(dataholder.dataset, dataholder.targets, one_batch=one_batch)
-    return {'val_loss': loss, 'val_acc': acc}
+    train = peer.dataset.generator.train
+    peer.model.fit(train, epochs=4)
+    return peer.model.history.history
 
 
 def model_inference(peer, one_batch=False):
-    t = time.time()
-    loss, acc = peer.model.evaluate(peer.inference.dataset, peer.inference.targets, one_batch)
-    o = "1B" if one_batch else "*B"
-    t = time.time() - t
-    log('result', f"{peer} [{t:.2f}s] {o} Inference loss: {loss:.4f},  acc: {(acc * 100):.2f}%")
+    log('info', f"Model evaluation...")
+    test = peer.dataset.generator.test
+    logs = peer.model.evaluate(test, verbose=2)
+    log('result', f"Node {peer.id} Inference loss: {logs[0]}, RMSE: {logs[1]} | MAE {logs[2]}")
 
 
-def get_params(model, named=False, numpy=None):
+def train_for_x_epoch(peer, batches=1, evaluate=False):
+    for i in range(batches):
+        # train for x batches randomly chosen when Dataloader is set with shuffle=True
+        batch = next(iter(peer.train))
+        # execute one training step
+        optimizer = peer.params.opt_func(peer.model.parameters(), peer.params.lr)
+        loss = peer.model.train_step(batch, peer.device)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        # get gradients
+        # TODO review store gradients in "peer.grads"
+        # grads = []
+        # for param in peer.model.parameters():
+        #     grads.append(param.grad.view(-1))
+        # peer.grads = torch.cat(copy.deepcopy(grads))
+    if evaluate:
+        return peer.model.evaluate(peer.val, peer.device)
+
+    return None
+
+
+def evaluate_model(model, dataholder, one_batch=False, device="cpu"):
+    return model.evaluate(dataholder, one_batch=one_batch, device=device)
+
+
+def get_params(model, named=False, numpy=False):
     if named:
-        return model.named_parameters()
+        return model.get_named_params(numpy=numpy)
     else:
-        return model.parameters
+        return model.get_params(numpy=numpy)
 
 
-def set_params(model, params, named=False, numpy=None):
+def set_params(model, params, named=False, numpy=False):
     if named:
         log("error", "Setting params using named params is not supported")
         exit()
     else:
-        model.parameters = params
+        model.set_params(params, numpy=numpy)
 
 
 def GAR(peer, grads, weighted=True):
     # Weighted Gradients Aggregation rule
-    flattened = flatten_grads(grads)
+    grads = torch.stack(grads)
     if peer.params.gar == "average":
-        r = average(flattened)
+        return average(grads)
     elif peer.params.gar == "median":
-        r = median(flattened)
+        return median(grads)
     elif peer.params.gar == "aksel":
-        r = aksel(flattened)
+        return aksel(grads)
     elif peer.params.gar == "krum":
-        r = krum(flattened)
+        return krum(grads)
     else:
         raise NotImplementedError()
-    return unflatten_grad(r, grads[0])

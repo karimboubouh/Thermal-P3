@@ -4,22 +4,19 @@ import pickle
 import socket
 import struct
 import time
-import traceback
 from copy import deepcopy
 from threading import Thread
-from typing import List
 
 import numpy as np
 import torch
 
 from src import protocol
-from src.conf import PORT, SOCK_TIMEOUT, TCP_SOCKET_SERVER_LISTEN, ML_ENGINE
-from src.helpers import Map
-from src.measure_energy import measure_energy
-from src.ml import get_dataset, train_val_test, inference_ds, evaluate_model, get_params, set_params, train_for_x_epoch
-from src.ml import initialize_models, model_fit, model_inference
-from src.profiler import profiler
-from src.utils import optimizer_func, log, create_tcp_socket, labels_set, get_ip_address, elog
+from src.conf import PORT, SOCK_TIMEOUT, TCP_SOCKET_SERVER_LISTEN, ML_ENGINE, RECORD_PER_HOUR
+from src.ecobee import read_ecobee_cluster, prepare_ecobee
+from src.helpers import Map, timeit
+from src.ml import inference_ds, evaluate_model, get_params, set_params, train_for_x_epoch, initialize_models
+from src.ml import model_fit, model_inference
+from src.utils import log, create_tcp_socket, labels_set, get_ip_address
 
 
 class Node(Thread):
@@ -30,10 +27,8 @@ class Node(Thread):
         self.mp = bool(args.mp)
         self.host = get_ip_address()
         self.port = PORT + k
-        self.device = args.device
         self.model = model
         self.local_model = model
-        self.optimizer = None
         self.grads = None
         self.V = {}
         self.current_round = 0
@@ -43,19 +38,13 @@ class Node(Thread):
         self.in_neighbors = []
         self.clustered = clustered
         self.similarity = similarity
-        self.train = data.get('train', None)
-        self.val = data.get('val', None)
-        self.test = data.get('test', None)
-        self.inference = data.get('inference', None)
+        self.dataset = data
         self.terminate = False
         # default params
         self.params = Map({
             'frac': args.frac,
             'epochs': args.epochs,
             'batch_size': args.batch_size,
-            'lr': args.lr,
-            'momentum': args.momentum,
-            'opt_func': optimizer_func(args.optimizer),
             'gar': args.gar,
             'D': sum(self.similarity.values()),
             'confidence': 1,
@@ -145,7 +134,7 @@ class Node(Thread):
             log('error', f"{self} Execute exception: {e}")
             return None
 
-    def fit(self, inference=True):
+    def fit(self, epochs=4, inference=True):
         # train the model
         history = model_fit(self)
         # set local model variable
@@ -161,7 +150,7 @@ class Node(Thread):
         return train_for_x_epoch(self, batches, evaluate)
 
     def evaluate(self, dataholder, one_batch=True):
-        return evaluate_model(self.model, dataholder, one_batch, device=self.device)
+        return evaluate_model(self.model, dataholder, one_batch)
 
     def save_model(self):
         pass
@@ -397,28 +386,25 @@ class Graph:
     @staticmethod
     # @measure_energy
     # @profiler
-    def centralized_training(args, inference=True):
-        t = time.time()
+    # @timeit
+    def centralized_training(args, cluster_id=0, season='summer'):
         log('warning', f'ML engine: {ML_ENGINE}')
         log('event', 'Centralized training ...')
-        args.num_users = 1
-        args.iid = 1
-        args.unequal = 0
-        args.rounds = 0
-        train_ds, test_ds, user_groups = get_dataset(args)
-        train, val, test = train_val_test(train_ds, user_groups[0], args)
-        data = {'train': train, 'val': val, 'test': test, 'inference': test_ds}
+        # load Ecobee dataset
+        log('info', f'Loading processed data for cluster {cluster_id} and season: {season}...')
+        data = read_ecobee_cluster(cluster_id, season)
+        # prepare Ecobee data to generate timeseries dataset with n_input samples in history
+        n_input = 24 * RECORD_PER_HOUR
+        n_features = 6
+        dataset = prepare_ecobee(data[season], season, ts_input=n_input)
         log('info', f"Initializing {args.model} model.")
-        models = initialize_models(args, same=True)
-        server = Node(0, models[0], data, [], False, {}, args)
-        server.inference = inference_ds(server, args)
-        log('info', f"Start server training on {len(server.train.dataset)} samples ...")
-        history = server.fit(inference)
+        model = initialize_models(args.model, input_shape=(n_input, n_features), nbr_models=1, same=True)[0]
+        server = Node(0, model, dataset, [], False, {}, args)
+        log('info', f"Start server training on {len(server.dataset.y_train)} samples ...")
+        history = server.fit(args.epochs, inference=True)
         server.stop()
-        t = time.time() - t
-        log("success", f"Centralized training finished in {t:.2f} seconds.")
 
-        return [history]
+        return history
 
     # @measure_energy
     # @profiler

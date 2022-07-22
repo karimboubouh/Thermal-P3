@@ -1,4 +1,5 @@
 import argparse
+import os
 import pickle
 import random
 import socket
@@ -7,6 +8,7 @@ from inspect import getframeinfo, currentframe
 from itertools import combinations
 
 import numpy as np
+import tensorflow as tf
 import torch
 from scipy.spatial import distance
 from termcolor import cprint
@@ -55,13 +57,14 @@ def args_parser():
                         help="number of rounds of training")
     parser.add_argument('--num_users', type=int, default=100,
                         help="number of users: K")
-    parser.add_argument('--model', type=str, default='mlp', help='model name')
+    parser.add_argument('--model', type=str, default='RNN',
+                        help='model name: RNN, LSTM, DNN or BNN')
     parser.add_argument('--frac', type=float, default=1,
                         help='the fraction of active neighbors')
     parser.add_argument('--gar', type=str, default='average',
                         help='Gradient Aggregation rule to use: \
                          average, median, krum, aksel')
-    parser.add_argument('--epochs', type=int, default=2,
+    parser.add_argument('--epochs', type=int, default=1,
                         help="the number of local epochs: E")
     parser.add_argument('--batch_size', type=int, default=64,
                         help="batch size: B")
@@ -72,8 +75,6 @@ def args_parser():
     parser.add_argument('--mp', type=int, default=1,
                         help='Use message passing (MP) via sockets or shared \
                         memory (SM). Default set to MP. Set to 0 for SM.')
-    parser.add_argument('--dataset', type=str, default='mnist', help="name \
-                        of dataset")
     parser.add_argument('--test_scope', type=str, default='global', help="test \
                         data scope (local, neighborhood, global)")
     parser.add_argument('--num_classes', type=int, default=10, help="number \
@@ -105,9 +106,13 @@ def load_conf():
 def fixed_seed(fixed=True):
     global args
     if fixed:
+        os.environ['PYTHONHASHSEED'] = str(args.seed)
+        os.environ['TF_DETERMINISTIC_OPS'] = '1'
+        os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
         torch.manual_seed(args.seed)
         random.seed(args.seed)
         np.random.seed(args.seed)
+        tf.random.set_seed(args.seed)
 
 
 def log(mtype, message):

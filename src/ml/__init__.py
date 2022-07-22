@@ -4,6 +4,12 @@ if ML_ENGINE.lower() == "pytorch":
     from src.ml.pytorch.models import *
     from src.ml.pytorch.helpers import *
     from src.ml.pytorch.datasets import get_dataset, train_val_test, inference_ds
+
+elif ML_ENGINE.lower() == "tensorflow":
+    from src.ml.tensorflow.models import *
+    from src.ml.tensorflow.helpers import *
+    from src.ml.tensorflow.datasets import get_dataset, train_val_test, inference_ds
+
 elif ML_ENGINE.lower() == "numpy":
     from src.ml.numpy.models import *
     from src.ml.numpy.helpers import *

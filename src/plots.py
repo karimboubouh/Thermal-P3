@@ -137,6 +137,37 @@ def plot_manymore(exps, metric='accuracy', measure="mean", info=None, save=False
     plt.show()
 
 
+def plot_clusters(data, y_km, kmeans, K):
+    # plot the k clusters
+    colors = ['blue', 'yellow', 'orange', 'lightgreen', 'purple', 'grey', 'tan', 'pink', 'navy', 'aqua']
+    ids = {}
+    for k in range(K):
+        ids[k] = data[y_km == k]
+        plt.scatter(
+            data[y_km == k, 0], data[y_km == k, 1],
+            s=50, c=colors[k],
+            marker='v', edgecolor='black',
+            label=f"Cluster {k + 1} ({len(ids[k])} homes)"
+        )
+
+    # plot the centroids
+    plt.scatter(
+        kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1],
+        s=150, marker='*',
+        c='red', edgecolor='black',
+        label='Centroids'
+    )
+    # plt.rcParams['figure.figsize'] = (6.4, 4.8)
+    plt.rcParams['figure.dpi'] = 300
+    plt.xlabel('Floor area')
+    plt.ylabel('Age')
+    plt.legend(scatterpoints=1)
+    plt.rc('legend', fontsize=4)
+    plt.grid()
+    # plt.savefig('Homes clusters.pdf')
+    plt.show()
+
+
 if __name__ == '__main__':
     plot_manymore([
         {'file': "PT_P3_U_100_0_500.pkl", 'name': "P3, $e = 0$"},
@@ -144,7 +175,6 @@ if __name__ == '__main__':
         {'file': "PT_P3_U_100_10_500.pkl", 'name': "P3, $e = 10$"},
     ], metric="accuracy", measure="mean-std",
         info={'xlabel': "iterations", 'ylabel': "Test Accuracy over all peers", 'title': ""}, save=True)
-
 
 """
 -------------------------------------------------

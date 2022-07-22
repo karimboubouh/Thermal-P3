@@ -1,5 +1,9 @@
+import time
+from functools import wraps
+
 import numpy as np
 import torch
+from termcolor import cprint
 from torch.utils.data import Dataset
 
 from src.conf import DATASET_DUPLICATE
@@ -70,3 +74,18 @@ class Map(dict):
     def __delitem__(self, key):
         super(Map, self).__delitem__(key)
         del self.__dict__[key]
+
+
+def timeit(func):
+    @wraps(func)
+    def timeit_wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        total_time = end_time - start_time
+        name = func.__name__.replace(r'_', ' ').strip().capitalize()
+        cprint("\r Success: ", 'green', attrs=['reverse'], end=' ', flush=True)
+        cprint(f'{name} <{func.__name__}()> finished in {total_time:.4f} seconds.', 'green')
+        return result
+
+    return timeit_wrapper
