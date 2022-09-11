@@ -1,26 +1,31 @@
 import numpy as np
-import torch
+import tensorflow as tf
 
 
 def average(gradients):
     """ Aggregate the gradients using the average aggregation rule."""
     # Assertion
-
     assert len(gradients) > 0, "Empty list of gradient to aggregate"
     # Computation
     if len(gradients) > 1:
-        return torch.mean(gradients, 0)
+        nb = len(gradients[0])
+        layers = [[grad[i] for grad in gradients] for i in range(nb)]
+        return [np.mean(layers[i], axis=0) for i in range(nb)]
     else:
         return gradients[0]
 
 
 def median(gradients):
     """ Aggregate the gradients using the median aggregation rule."""
-    exit("Median uses numpy")
     # Assertion
     assert len(gradients) > 0, "Empty list of gradient to aggregate"
     # Computation
-    return np.median(gradients, 0)
+    if len(gradients) > 1:
+        nb = len(gradients[0])
+        layers = [[grad[i] for grad in gradients] for i in range(nb)]
+        return [np.median(layers[i], axis=0) for i in range(nb)]
+    else:
+        return gradients[0]
 
 
 def aksel(gradients):
@@ -64,6 +69,6 @@ def krum(gradients, f=1):
 if __name__ == '__main__':
     # g = [[1, 2, 3], [4, 5, 6], [1, 2, 3], [1, 2, 3], [4, 5, 6], [1, 2, 3], [1, 2, 3]]
     g = [[1., 3., 4.], [9., 7., 6.], [5., 5., 5.]]
-    tg = torch.tensor(g)
+    # tg = torch.tensor(g)
     # print(median(tg))
-    print(np.mean(tg, 0))
+    # print(np.mean(tg, 0))

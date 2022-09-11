@@ -8,15 +8,14 @@ from copy import deepcopy
 from threading import Thread
 
 import numpy as np
-import torch
 
 from src import protocol
-from src.conf import PORT, SOCK_TIMEOUT, TCP_SOCKET_SERVER_LISTEN, ML_ENGINE, RECORD_PER_HOUR
-from src.ecobee import read_ecobee_cluster, prepare_ecobee
+import src.conf as C
+from src.ecobee import read_ecobee_cluster, prepare_ecobee, evaluate_cluster_model, make_predictions
 from src.helpers import Map, timeit
-from src.ml import inference_ds, evaluate_model, get_params, set_params, train_for_x_epoch, initialize_models
+from src.ml import get_params, set_params, train_for_x_batches, initialize_models, evaluate_model
 from src.ml import model_fit, model_inference
-from src.utils import log, create_tcp_socket, labels_set, get_ip_address
+from src.utils import log, create_tcp_socket, get_ip_address
 
 
 class Node(Thread):
@@ -26,7 +25,7 @@ class Node(Thread):
         self.id = k
         self.mp = bool(args.mp)
         self.host = get_ip_address()
-        self.port = PORT + k
+        self.port = C.PORT + k
         self.model = model
         self.local_model = model
         self.grads = None
@@ -83,7 +82,7 @@ class Node(Thread):
                 return True
             if self.mp:
                 sock = create_tcp_socket()
-                sock.settimeout(SOCK_TIMEOUT)
+                sock.settimeout(C.SOCK_TIMEOUT)
                 sock.connect((neighbor.host, neighbor.port))
                 neighbor_conn = NodeConnection(self, neighbor.id, sock)
                 neighbor_conn.start()
@@ -116,7 +115,8 @@ class Node(Thread):
         if self.mp:
             self.sock.close()
 
-    def send(self, neighbor, msg):
+    @staticmethod
+    def send(neighbor, msg):
         neighbor.send(msg)
 
     def broadcast(self, msg, active=None):
@@ -134,23 +134,30 @@ class Node(Thread):
             log('error', f"{self} Execute exception: {e}")
             return None
 
-    def fit(self, epochs=4, inference=True):
+    def fit(self, args, inference=True, one_batch=False):
         # train the model
-        history = model_fit(self)
-        # set local model variable
-        self.local_model = self.model
+        if one_batch:
+            train_history = train_for_x_batches(self, batches=args.epochs, evaluate=False, use_tqdm=True)
+            # set local model variable
+            self.local_model = self.model
+        else:
+            train_history = model_fit(self, args.epochs, args.batch_size)
+            # set local model variable
+            self.local_model = self.model
         # evaluate against a one batch or the whole inference dataset
-        # history = None
         if inference:
-            model_inference(self, one_batch=False)
+            test_history = model_inference(self, batch_size=args.batch_size)
+        else:
+            test_history = None
 
-        return history
+        return Map({'train': train_history, 'test': test_history})
 
     def train_one_epoch(self, batches=1, evaluate=False):
-        return train_for_x_epoch(self, batches, evaluate)
+        return train_for_x_batches(self, batches, evaluate, use_tqdm=False)
 
-    def evaluate(self, dataholder, one_batch=True):
-        return evaluate_model(self.model, dataholder, one_batch)
+    def evaluate(self, one_batch=False):
+        # return model_inference(self, batch_size=self.params.batch_size, one_batch=one_batch)
+        return evaluate_model(self, one_batch=one_batch)
 
     def save_model(self):
         pass
@@ -182,30 +189,10 @@ class Node(Thread):
         return self.grads
 
     def set_gradients(self, grads):
-        idx = 0
-        grads_ = grads.clone().cpu()
-        for param in self.model.parameters():
-            size_layer = len(param.grad.view(-1))
-            grads_layer = torch.Tensor(grads_[idx: idx + size_layer]).reshape_as(param.grad).detach().to(self.device)
-            param.grad = grads_layer
-            idx += size_layer
-        self.grads = grads_.to(self.device)
+        pass
 
     def take_step(self):
         self.model.train()
-        self.optimizer.step()
-        self.optimizer.zero_grad()
-
-    def local_data_scope(self):
-        batch = next(iter(self.train))
-        scope = set(batch[1].numpy())
-        return list(scope)
-
-    def neighborhood_data_scope(self):
-        scope = set(self.local_data_scope())
-        for neighbor in self.neighbors:
-            scope = scope.union(neighbor.local_data_scope())
-        return list(scope)
 
     #  Private methods --------------------------------------------------------
 
@@ -216,8 +203,8 @@ class Node(Thread):
         if self.mp:
             self.sock = create_tcp_socket()
             self.sock.bind((self.host, self.port))
-            self.sock.settimeout(SOCK_TIMEOUT)
-            self.sock.listen(TCP_SOCKET_SERVER_LISTEN)
+            self.sock.settimeout(C.SOCK_TIMEOUT)
+            self.sock.listen(C.TCP_SOCKET_SERVER_LISTEN)
             self.port = self.sock.getsockname()[1]
         else:
             self.sock = None
@@ -257,14 +244,14 @@ class NodeConnection(Thread):
                     elif data and data['mtype'] == protocol.CONNECT:
                         self.handle_connect(data['data'])
                     elif data and data['mtype'] == protocol.DISCONNECT:
-                        self.handle_disconnect(data['data'])
+                        self.handle_disconnect()
                     else:
                         log('error', f"{self.node.name}: Unknown type of message: {data['mtype']}.")
             except pickle.UnpicklingError as e:
                 log('error', f"{self.node}: Corrupted message : {e}")
             except socket.timeout:
                 pass
-            except struct.error as e:
+            except struct.error:
                 pass
             except Exception as e:
                 self.terminate = True
@@ -291,7 +278,7 @@ class NodeConnection(Thread):
     def handle_step(self, data):
         try:
             self.node.params.exchanges += 1
-        except Exception as e:
+        except Exception:
             print(self)
             print(self.node)
             print(self.node.params)
@@ -306,7 +293,7 @@ class NodeConnection(Thread):
         self.neighbor_id = data['id']
         self.address = data['address']
 
-    def handle_disconnect(self, data):
+    def handle_disconnect(self):
         self.terminate = True
         if self in self.node.neighbors:
             self.node.neighbors.remove(self)
@@ -338,7 +325,7 @@ class NodeLink:
             elif data and data['mtype'] == protocol.CONNECT:
                 self.link.handle_connect(data['data'])
             elif data and data['mtype'] == protocol.DISCONNECT:
-                self.link.handle_disconnect(data['data'])
+                self.link.handle_disconnect()
             else:
                 log('error', f"{self.node.name}: Unknown type of message: {data['mtype']}.")
         else:
@@ -355,7 +342,7 @@ class NodeLink:
     def handle_connect(self, data):
         self.neighbor_id = data['id']
 
-    def handle_disconnect(self, data):
+    def handle_disconnect(self):
         self.terminate = True
         if self in self.node.neighbors:
             self.node.neighbors.remove(self)
@@ -386,38 +373,52 @@ class Graph:
     @staticmethod
     # @measure_energy
     # @profiler
-    # @timeit
-    def centralized_training(args, cluster_id=0, season='summer'):
-        log('warning', f'ML engine: {ML_ENGINE}')
+    @timeit
+    def centralized_training(args, cluster_id=0, season='summer', resample=False, cpu=False, predict=False, hval=False):
+        log('warning', f'ML engine: {C.ML_ENGINE}')
         log('event', 'Centralized training ...')
         # load Ecobee dataset
         log('info', f'Loading processed data for cluster {cluster_id} and season: {season}...')
-        data = read_ecobee_cluster(cluster_id, season)
+        data = read_ecobee_cluster(cluster_id, season, resample=resample)
         # prepare Ecobee data to generate timeseries dataset with n_input samples in history
-        n_input = 24 * RECORD_PER_HOUR
-        n_features = 6
-        dataset = prepare_ecobee(data[season], season, ts_input=n_input)
+        n_input = 24 * C.RECORD_PER_HOUR
+        n_features = len(C.DF_CLUSTER_COLUMNS)
+        dataset, info = prepare_ecobee(data[season], season, ts_input=n_input, batch_size=args.batch_size)
         log('info', f"Initializing {args.model} model.")
-        model = initialize_models(args.model, input_shape=(n_input, n_features), nbr_models=1, same=True)[0]
+        print(C.RECORD_PER_HOUR)
+        model = initialize_models(args.model, input_shape=(n_input, n_features), cpu=cpu, nbr_models=1, same=True)[0]
         server = Node(0, model, dataset, [], False, {}, args)
         log('info', f"Start server training on {len(server.dataset.y_train)} samples ...")
-        history = server.fit(args.epochs, inference=True)
+        history = server.fit(args, one_batch=False, inference=True)
+        if predict:
+            log('event', f"Predicting test temperatures...")
+            predictions = make_predictions(server, info, ptype="test")
+        else:
+            predictions = None
+        if hval:
+            log('event', f"Evaluation of the learned model using individual home records")
+            home_histories = evaluate_cluster_model(server.model, cluster_id, season=season, batch_size=args.batch_size,
+                                                    one_batch=True, resample=resample)
+        else:
+            home_histories = None
         server.stop()
 
-        return history
+        return history, home_histories, predictions
 
     # @measure_energy
     # @profiler
-    def local_training(self, device='cpu', inference=True):
+    def local_training(self, inference=True, one_batch=False):
         t = time.time()
         log('event', 'Starting local training ...')
         histories = dict()
         for peer in self.peers:
             if isinstance(peer, Node):
-                labels = labels_set(peer.train)
-                log('info',
-                    f"{peer} is performing local training on {len(peer.train.dataset)} samples of labels {labels}.")
-            histories[peer.id] = peer.fit(inference)
+                nb = len(peer.dataset.y_train)
+                if one_batch:
+                    log('info', f"{peer} is performing local training on {self.args.batch_size} out of {nb} samples.")
+                else:
+                    log('info', f"{peer} is performing local training on {nb} samples.")
+            histories[peer.id] = peer.fit(self.args, inference=inference, one_batch=one_batch)
             # peer.stop()
         t = time.time() - t
         log("success", f"Local training finished in {t:.2f} seconds.")
@@ -503,13 +504,15 @@ class Graph:
                     f"/ {len(peer.test.dataset)} test samples / {len(peer.inference.dataset)} inference samples")
 
                 iterator = iter(peer.train)
-                x_batch, y_batch = iterator.next()
+                x_batch, y_batch = next(iterator)
                 log('', f"{peer} has: [{len(peer.train.dataset)}] {set(y_batch.numpy())}")
                 print()
 
     def set_inference(self, args):
-        for peer in self.peers:
-            peer.inference = inference_ds(peer, args)
+        # TODO check this
+        # for peer in self.peers:
+        #     peer.inference = inference_ds(peer, args)
+        pass
 
     def PSS(self, peer: Node, k):
         nid = [n.neighbor_id for n in peer.neighbors]

@@ -1,44 +1,7 @@
 import time
 from functools import wraps
 
-import numpy as np
-import torch
 from termcolor import cprint
-from torch.utils.data import Dataset
-
-from src.conf import DATASET_DUPLICATE
-
-
-class DatasetSplit(Dataset):
-    """An abstract Dataset class wrapped around Pytorch Dataset class.
-    """
-
-    def __init__(self, dataset, idxs):
-        if DATASET_DUPLICATE:
-            dataset, idxs = self.times_dataset(dataset, idxs, times=DATASET_DUPLICATE)
-        self.dataset = dataset
-        self.idxs = [int(i) for i in idxs]
-
-    def __len__(self):
-        return len(self.idxs)
-
-    def __getitem__(self, item):
-        if DATASET_DUPLICATE:
-            while item > 60000:
-                item -= 60000
-        image, label = self.dataset[self.idxs[item]]
-        # return torch.tensor(image), torch.tensor(label)
-        return image.clone().detach(), torch.tensor(label)
-
-    @staticmethod
-    def times_dataset(dataset, idxs, times=1):
-        _dataset = None
-        _idxs = []
-        for i in range(times):
-            _dataset = dataset if _dataset is None else _dataset + dataset
-            _idxs += list(np.array(idxs) + i * len(dataset))
-
-        return _dataset, _idxs
 
 
 class Map(dict):
@@ -74,6 +37,12 @@ class Map(dict):
     def __delitem__(self, key):
         super(Map, self).__delitem__(key)
         del self.__dict__[key]
+
+    def __getstate__(self):
+        return self.__dict__
+
+    def __setstate__(self, d):
+        self.__dict__.update(d)
 
 
 def timeit(func):

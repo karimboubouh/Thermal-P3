@@ -2,13 +2,13 @@
 
 # Configurations
 UUID=$(cat /dev/urandom | tr -dc 'A-Z0-9' | fold -w 4 | head -n 1)
-VENV_PATH="/home/karim/Workspace/.pyenv"
+VENV_PATH="/home/karim/Workspace/.tp3env"
 TIMEFORMAT="%Rs"
 MAX_FREQ="3.6Ghz"
 AVG_FREQ="1.9Ghz"
 MIN_FREQ="1.2Ghz"
 IDLE_TIME=60
-AVG_IDLE_POWER=12.65
+AVG_IDLE_POWER=12.75
 STD_IDLE_POWER=0.25
 
 cecho() {

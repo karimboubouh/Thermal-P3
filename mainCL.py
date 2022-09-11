@@ -1,25 +1,48 @@
-from src.ecobee import read_ecobee_cluster, prepare_ecobee
+import src.conf as C
+from src import plots
+from src.helpers import Map
 from src.p2p import Graph
-from src.utils import load_conf, fixed_seed, exp_details
+from src.plots import box_plot
+from src.utils import load_conf, fixed_seed, exp_details, save, load
 
-"""
-Clustering finished for 954 homes.
-    Cluster 0 has 168 homes.
-    Cluster 1 has 166 homes.
-    Cluster 2 has 206 homes.
-    Cluster 3 has 138 homes.
-    Cluster 4 has 194 homes.
-    Cluster 5 has 82 homes.
-"""
 if __name__ == '__main__':
-    # load experiment configuration from CLI arguments
-    args = load_conf()
+    # ----------------------¬
+    cpu = False
+    cluster_id = 4
+    season = 'summer'
+    # ----------------------
+    args = load_conf(cpu=cpu)
+    # ----------------------
+    args.model = "LSTM"
+    args.epochs = 4
+    args.batch_size = 128
+    C.TIME_ABSTRACTION = "5min"
+    C.RECORD_PER_HOUR = 12
+    resample = False if C.TIME_ABSTRACTION is None else True
+    # ----------------------
     fixed_seed(True)
-    # print experiment details
     exp_details(args)
     # Centralized training
-    train_logs = Graph.centralized_training(args, cluster_id=0, season='summer')
-    # save(f"train_logs_CL", train_logs)
-    # info = {'xlabel': "Rounds", 'title': "Accuracy. vs. No. of Epochs"}
-    # plot_train_history(train_logs, metric='accuracy', measure="mean")
+    train_log, homes_logs, predictions = Graph.centralized_training(args, cluster_id, season, resample, cpu,
+                                                                    predict=False, hval=False)
+    # save(f"CL_logs_{cpu}_cluster_{cluster_id}_{season}_{args.epochs}", [train_log, homes_logs])
+    # train_log, homes_logs = load("CL_logs_False_cluster_4_winter_4_620.pkl")
+    # plot predictions
+    # info = Map({'xlabel': "Time period", 'ylabel': 'Temperature'})
+    # plots.plot_predictions(predictions, info)
+    # plot box_plot
+    # info = {'xlabel': "Epochs", 'ylabel': 'Validation RMSE Loss'}
+    # box_plot(train_log, homes_logs, showfliers=False, title=f"Cluster {cluster_id} || Season {season}")
     print("END.")
+#
+
+"""
+---> Centralized learning of all clusters
+    train_logs = {}
+    for c in range(6):
+        for s in ['spring', 'summer', 'autumn']:
+            log('event', f"Training model of cluster {c} for {s} season...")
+            logs = Graph.centralized_training(args, cluster_id=c, season=s)
+            train_logs[f"{c}_{s}"] = logs
+    save(f"CL_logs_CPU_ALL_{args.epochs}_{TIME_ABSTRACTION}", train_logs)
+"""

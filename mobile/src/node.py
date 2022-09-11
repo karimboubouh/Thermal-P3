@@ -133,10 +133,8 @@ class Node(Thread):
         history = model_fit(self)
         # set local model variable
         self.local_model = self.model
-        # evaluate against a one batch or the whole inference dataset
-        # history = None
         if inference:
-            model_inference(self, one_batch=False)
+            model_inference(self)
 
         return history
 

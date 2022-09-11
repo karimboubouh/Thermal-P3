@@ -1,18 +1,13 @@
-from src.conf import ML_ENGINE
+import src.conf as C
 
-if ML_ENGINE.lower() == "pytorch":
-    from src.ml.pytorch.models import *
-    from src.ml.pytorch.helpers import *
-    from src.ml.pytorch.datasets import get_dataset, train_val_test, inference_ds
-
-elif ML_ENGINE.lower() == "tensorflow":
-    from src.ml.tensorflow.models import *
+if C.ML_ENGINE.lower() == "tensorflow":
+    print("Already loading tensorflow")
     from src.ml.tensorflow.helpers import *
-    from src.ml.tensorflow.datasets import get_dataset, train_val_test, inference_ds
-
-elif ML_ENGINE.lower() == "numpy":
+    from src.ml.numpy.datasets import get_dataset, train_val_test, inference_ds
+elif C.ML_ENGINE.lower() == "numpy":
+    print("Already loading numpy")
     from src.ml.numpy.models import *
     from src.ml.numpy.helpers import *
     from src.ml.numpy.datasets import get_dataset, train_val_test, inference_ds
 else:
-    exit(f'Unknown "{ML_ENGINE}" ML engine !')
+    exit(f'Unknown "{C.ML_ENGINE}" ML engine !')

@@ -50,6 +50,18 @@ def random_graph(models, rho=0.2, cluster_enabled=False, k=2, data=None):
     }
 
 
+def full_graph(models):
+    nb_nodes = len(models)
+    clusters = {0: np.arange(nb_nodes)}
+    similarities = np.ones((nb_nodes, nb_nodes))
+    similarities[np.diag_indices_from(similarities)] = 0
+    return {
+        'clusters': clusters,
+        'similarities': similarities,
+        'adjacency': similarities != 0
+    }
+
+
 def random2_graph(models, train_ds):
     # test_ds, user_groups, prob_edge=1, cluster_data=True, rnd_state=None
     # similarities based on data /or/ random similarities based on clfs
@@ -99,26 +111,24 @@ def datasim_network(data, sigma=0.2):
     return adjacency, similarities
 
 
-def network_graph(topology, models, train_ds, test_ds, user_groups, args, edge=None):
-    nbr_nodes = len(user_groups)
+def network_graph(topology, models, dataset, home_ids, args, edge=None):
+    nbr_nodes = len(home_ids)
     clustered = True if len(topology['clusters']) > 1 else False
     peers = list()
     t = time.time()
     # train, val, test = train_val_test(train_ds, user_groups[0], args)
     for i in range(nbr_nodes):
         neighbors_ids, similarity = node_topology(i, topology)
-        train, val, test = train_val_test(train_ds, user_groups[i], args)
-        data = {'train': train, 'val': val, 'test': test, 'inference': test_ds}
         if edge and edge.is_edge_device(i):
-            device_bridge = edge.populate_device(i, models[i], data, neighbors_ids, clustered, similarity)
+            device_bridge = edge.populate_device(i, models[i], dataset, neighbors_ids, clustered, similarity)
             device_bridge.neighbors_ids = neighbors_ids
             peers.append(device_bridge)
         else:
-            peer = Node(i, models[i], data, neighbors_ids, clustered, similarity, args)
+            peer = Node(i, models[i], dataset[home_ids[i]], neighbors_ids, clustered, similarity, args)
             peer.start()
             peers.append(peer)
     connect_to_neighbors(peers)
-    graph = Graph(peers, topology, test_ds, args)
+    graph = Graph(peers, topology, dataset, args)
     log('info', f"Network Graph constructed in {(time.time() - t):.4f} seconds")
 
     # Transformations

@@ -6,8 +6,7 @@ from threading import Thread
 import numpy as np
 
 from src import protocol
-from src import conf
-from src.conf import DATASET_DUPLICATE
+import src.conf as C
 from src.helpers import Map
 from src.utils import log, wait_until, create_tcp_socket, get_ip_address
 
@@ -15,7 +14,7 @@ from src.utils import log, wait_until, create_tcp_socket, get_ip_address
 def edge_devices(args, count=1, rand_ids=False):
     if count < 1:
         return None
-    if conf.ML_ENGINE != "NumPy":
+    if C.ML_ENGINE != "NumPy":
         log('error', f"Mobile devices currently only support NumPy based ML")
         exit()
     if args.mp == 0:
@@ -23,15 +22,15 @@ def edge_devices(args, count=1, rand_ids=False):
         exit()
     launcher = Bridge(count, args, rand_ids=rand_ids)
     launcher.start()
-    wait_until(launcher.bridged, conf.LAUNCHER_TIMEOUT, 1)
+    wait_until(launcher.bridged, C.LAUNCHER_TIMEOUT, 1)
     if len(launcher.bridges) == count:
         log('success', f"All edge devices joined successfully")
     elif len(launcher.bridges) == 0:
-        log('error', f"No device joined in {conf.LAUNCHER_TIMEOUT} seconds")
+        log('error', f"No device joined in {C.LAUNCHER_TIMEOUT} seconds")
         launcher.stop()
         exit()
     else:
-        log('error', f"Only {len(launcher.bridges)} devices joined after waiting for {conf.LAUNCHER_TIMEOUT} seconds")
+        log('error', f"Only {len(launcher.bridges)} devices joined after waiting for {C.LAUNCHER_TIMEOUT} seconds")
         exit()
 
     return launcher
@@ -50,7 +49,7 @@ class Bridge(Thread):
         self.args = args
         self.terminate = False
         self.host = get_ip_address()
-        self.port = conf.LAUNCHER_PORT
+        self.port = C.LAUNCHER_PORT
         self.bridges = []
         self.waiting = {}
         self._init_server()
@@ -92,13 +91,14 @@ class Bridge(Thread):
             info['dataset'] = data
         else:
             info['num_users'] = self.args.num_users
-            info['ds_duplicate'] = DATASET_DUPLICATE
+            info['ds_duplicate'] = C.DATASET_DUPLICATE
         bridge.populate(info)
 
         # return DeviceBridge
         return bridge
 
-    def send(self, bridge, msg):
+    @staticmethod
+    def send(bridge, msg):
         bridge.send(msg)
 
     def get_bridge_by_id(self, bid):
@@ -118,8 +118,8 @@ class Bridge(Thread):
     def _init_server(self):
         self.sock = create_tcp_socket()
         self.sock.bind((self.host, self.port))
-        self.sock.settimeout(conf.SOCK_TIMEOUT)
-        self.sock.listen(conf.TCP_SOCKET_SERVER_LISTEN)
+        self.sock.settimeout(C.SOCK_TIMEOUT)
+        self.sock.listen(C.TCP_SOCKET_SERVER_LISTEN)
         self.host = self.sock.getsockname()[0]
 
     def __repr__(self):
@@ -208,18 +208,18 @@ class DeviceBridge(Thread):
 
     def populate(self, info):
         self.send(protocol.call_method("populate", info))
-        done = wait_until(self.return_method, conf.FUNC_TIMEOUT, 1, "populate")
+        done = wait_until(self.return_method, C.FUNC_TIMEOUT, 1, "populate")
         if done and self.callbacks['populate']['s']:
             del self.callbacks['populate']
             log('success', f"{self} populated successfully")
         elif done:
             log("error", f"Error populating {self}")
         else:
-            log('warning', f"Calling populate() timeout  after {conf.FUNC_TIMEOUT} seconds")
+            log('warning', f"Calling populate() timeout  after {C.FUNC_TIMEOUT} seconds")
 
     def connect(self, neighbor):
         self.send(protocol.call_method("connect", neighbor.id, neighbor.host, neighbor.port))
-        done = wait_until(self.return_method, conf.FUNC_TIMEOUT, 1, "connect")
+        done = wait_until(self.return_method, C.FUNC_TIMEOUT, 1, "connect")
         if done and self.callbacks['connect']['s']:
             self.neighbors.append(neighbor.id)
             del self.callbacks["connect"]
@@ -228,12 +228,12 @@ class DeviceBridge(Thread):
             log("error", self.callbacks['connect']['m'])
             return False
         else:
-            log('warning', f"Calling connect() timeout  after {conf.FUNC_TIMEOUT} seconds")
+            log('warning', f"Calling connect() timeout  after {C.FUNC_TIMEOUT} seconds")
             return False
 
     def fit(self, inference):
         self.send(protocol.call_method("fit", inference))
-        done = wait_until(self.return_method, conf.FUNC_TIMEOUT, 1, "fit")
+        done = wait_until(self.return_method, C.FUNC_TIMEOUT, 1, "fit")
         if done and self.callbacks['fit']['s']:
             history = self.callbacks['fit']['m']
             del self.callbacks['fit']
@@ -241,7 +241,7 @@ class DeviceBridge(Thread):
             #     log('', f"Epoch [{i}], val_loss: {h['val_loss']:.4f}, val_acc: {h['val_acc']:.4f}")
             return history
         else:
-            log('warning', f"Calling fit() timeout  after {conf.FUNC_TIMEOUT} seconds")
+            log('warning', f"Calling fit() timeout  after {C.FUNC_TIMEOUT} seconds")
             return None
 
     def execute(self, func, *args, **kwargs):
@@ -251,9 +251,9 @@ class DeviceBridge(Thread):
         self.current_exec = method
 
     def wait_method(self, method):
-        done = wait_until(self.return_method, conf.FUNC_TIMEOUT, 1, method)
+        done = wait_until(self.return_method, C.FUNC_TIMEOUT, 1, method)
         if not done:
-            log('warning', f"Calling execute({method}) timeout  after {conf.FUNC_TIMEOUT} seconds")
+            log('warning', f"Calling execute({method}) timeout  after {C.FUNC_TIMEOUT} seconds")
 
     def return_method(self, key):
         return key in self.callbacks

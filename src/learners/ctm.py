@@ -3,7 +3,7 @@ from tqdm import tqdm
 
 from src import protocol
 from src.conf import EVAL_ROUND, WAIT_TIMEOUT, WAIT_INTERVAL, ML_ENGINE
-from src.ml import GAR, model_inference, train_for_x_epoch
+from src.ml import GAR, model_inference
 from src.p2p import Graph, Node
 from src.utils import log, active_peers, wait_until, norm_squared
 
@@ -35,17 +35,13 @@ def collaborate(graph: Graph, args):
 
     # get collaboration logs
     collab_logs = {peer.id: peer.params.logs for peer in graph.peers}
-    ar = [peer.params.ar for peer in graph.peers]
-    print("ar")
-    print(ar)
-
     return collab_logs
 
 
 # ---------- Algorithm functions ----------------------------------------------
 
-def train_init(peer):
-    r = peer.evaluate(peer.inference, one_batch=True)
+def train_init(peer: Node):
+    r = peer.evaluate()
     peer.params.logs = [r]
     peer.params.ar = 0  # acceptance_rate
     peer.params.exchanges = 0
@@ -89,11 +85,11 @@ def train_step(peer, t):
 
 
 def train_stop(peer):
-    model_inference(peer, one_batch=True)
+    model_inference(peer)
     acceptance_rate = round(peer.params.n_accept / peer.params.exchanges * 100, 2)
     peer.params.ar = acceptance_rate
-    log('info',
-        f"{peer} Acceptance rate for sigma=({peer.params.sigma}) DMedian( {np.median(peer.params.D)}): {acceptance_rate} %")
+    # log('info',
+    # f"{peer} Acceptance rate for sigma=({peer.params.sigma}) DMedian( {np.median(peer.params.D)}): {acceptance_rate} %")
     peer.stop()
     return
 
@@ -105,6 +101,7 @@ def collaborativeUpdate(peer, t):
     # Similarity filter
     for j, vj in peer.V[t]:
         diff = norm_squared(vi, vj)
+        # TODO Evaluate each layer and compare per layer vi and vj
         peer.params.D.append(diff)
         if diff < peer.params.sigma:
             peer.params.n_accept += 1
@@ -124,12 +121,12 @@ def collaborativeUpdate(peer, t):
         return vi
 
 
-def update_model(peer, v, evaluate=False):
+def update_model(peer: Node, v, evaluate=False):
     peer.set_model_params(v)
     # TODO Review update function
     # peer.take_step()
     if evaluate:
-        t_eval = peer.evaluate(peer.inference, one_batch=True)
+        t_eval = peer.evaluate()
         peer.params.logs.append(t_eval)
 
 

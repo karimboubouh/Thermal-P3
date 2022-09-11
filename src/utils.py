@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import pickle
 import random
@@ -9,43 +10,36 @@ from itertools import combinations
 
 import numpy as np
 import tensorflow as tf
-import torch
 from scipy.spatial import distance
 from termcolor import cprint
-from torch import linalg as LA
 
+import src.conf as C
 from src import conf
-from src.conf import ML_ENGINE, TCP_SOCKET_BUFFER_SIZE
 from src.helpers import Map
 
 args: argparse.Namespace = None
 
 
-def set_device(gpu):
-    """Pick GPU if available, else CPU"""
-    if torch.cuda.is_available() and gpu:
-        return torch.device('cuda')
-    else:
-        return torch.device('cpu')
-
-
-def exp_details(args):
+def exp_details(arguments):
     print('Experimental details:')
-    print(f'    Model      : {args.model.upper()}')
-    print(f'    Optimizer  : {args.optimizer}')
-    print(f'    Learning   : {args.lr}')
-    print(f'    Epochs     : {args.epochs}')
-    print(f'    Batch size : {args.batch_size}')
+    if len(tf.config.experimental.list_physical_devices('GPU')) > 0:
+        print(f'    Training using      : GPU')
+        print(f'    Default GPU Device  : {tf.test.gpu_device_name()}')
+    else:
+        print(f'    Training using      : CPU')
+    print(f'    Model      : {arguments.model.upper()}')
+    print(f'    Optimizer  : {arguments.optimizer}')
+    print(f'    Epochs     : {arguments.epochs}')
+    print(f'    Batch size : {arguments.batch_size}')
+    print(f'    Time Abs   : {C.TIME_ABSTRACTION}')
     print('Collaborative learning parameters:')
-    print(f'    Data distribution     : {"IID" if args.iid else "Non-IID"}')
-    print(f'    Data size             : {"Unequal" if args.unequal else "Equal"} data size')
-    print(f'    Test scope            : {args.test_scope}')
-    print(f'    Number of peers       : {args.num_users}')
-    print(f'    Rounds                : {args.rounds}')
-    print(f'    Communication channel : {"TCP" if args.mp else "Shared memory"}')
-    print(f'    Device                : {args.device}')
-    print(f'    Seed                  : {args.seed}')
-    log('info', f'Used ML engine: {ML_ENGINE}')
+    print(f'    Data size             : {"Unequal" if arguments.unequal else "Equal"} data size')
+    print(f'    Test scope            : {arguments.test_scope}')
+    print(f'    Number of peers       : {arguments.num_users}')
+    print(f'    Rounds                : {arguments.rounds}')
+    print(f'    Communication channel : {"TCP" if arguments.mp else "Shared memory"}')
+    print(f'    Seed                  : {arguments.seed}')
+    print(f'    ML engine             : {C.ML_ENGINE}')
 
     return
 
@@ -57,22 +51,22 @@ def args_parser():
                         help="number of rounds of training")
     parser.add_argument('--num_users', type=int, default=100,
                         help="number of users: K")
-    parser.add_argument('--model', type=str, default='RNN',
+    parser.add_argument('--model', type=str, default='LSTM',
                         help='model name: RNN, LSTM, DNN or BNN')
     parser.add_argument('--frac', type=float, default=1,
                         help='the fraction of active neighbors')
     parser.add_argument('--gar', type=str, default='average',
                         help='Gradient Aggregation rule to use: \
                          average, median, krum, aksel')
-    parser.add_argument('--epochs', type=int, default=1,
+    parser.add_argument('--epochs', type=int, default=4,
                         help="the number of local epochs: E")
-    parser.add_argument('--batch_size', type=int, default=64,
+    parser.add_argument('--batch_size', type=int, default=128,
                         help="batch size: B")
     parser.add_argument('--lr', type=float, default=0.1,
                         help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.9,
                         help='SGD momentum (default: 0.9)')
-    parser.add_argument('--mp', type=int, default=1,
+    parser.add_argument('--mp', type=int, default=0,
                         help='Use message passing (MP) via sockets or shared \
                         memory (SM). Default set to MP. Set to 0 for SM.')
     parser.add_argument('--test_scope', type=str, default='global', help="test \
@@ -81,7 +75,7 @@ def args_parser():
                         of classes")
     parser.add_argument('--gpu', default=None, help="To use cuda, set \
                         to a specific GPU ID. Default set to use CPU.")
-    parser.add_argument('--optimizer', type=str, default='sgd', help="type \
+    parser.add_argument('--optimizer', type=str, default='adam', help="type \
                         of optimizer")
     parser.add_argument('--iid', type=int, default=1,
                         help='Default set to IID. Set to 0 for non-IID.')
@@ -95,11 +89,17 @@ def args_parser():
     return args
 
 
-def load_conf():
+def load_conf(cpu=True):
+    if C.ML_ENGINE.lower() == "tensorflow":
+        tf.get_logger().setLevel(logging.ERROR)
+        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
+        if cpu:
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+            os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
     # sys.argv = ['']
     global args
     args = args_parser()
-    args.device = set_device(args.gpu)
     return Map(vars(args))
 
 
@@ -109,7 +109,6 @@ def fixed_seed(fixed=True):
         os.environ['PYTHONHASHSEED'] = str(args.seed)
         os.environ['TF_DETERMINISTIC_OPS'] = '1'
         os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
-        torch.manual_seed(args.seed)
         random.seed(args.seed)
         np.random.seed(args.seed)
         tf.random.set_seed(args.seed)
@@ -117,6 +116,7 @@ def fixed_seed(fixed=True):
 
 def log(mtype, message):
     global args
+    # args = Map({'verbose': 2})
     title = True
     if not mtype:
         title = False
@@ -282,26 +282,14 @@ def node_topology(i, topology):
     return neighbors_ids, similarity
 
 
-def optimizer_func(optim):
-    optim = optim.lower()
-    if optim == 'sgd':
-        return torch.optim.SGD
-    elif optim == 'adam':
-        return torch.optim.Adam
-    else:
-        log('error', f"unsupported optimization algorithm: {optim}")
-        return torch.optim.SGD
-
-
 def verify_metrics(_metric, _measure):
-    if _metric not in ['accuracy', 'loss']:
+    _metric = _metric.lower()
+    if _metric.lower() not in ['accuracy', 'loss', 'rmse', 'mape', 'mae']:
         log("error", f"Unknown metric: {_metric}")
         log("", f"Set metric to default: accuracy")
-        metric = f"{conf.DEFAULT_VAL_DS}_acc"
-    elif _metric == "accuracy":
-        metric = f"{conf.DEFAULT_VAL_DS}_acc"
-    else:
         metric = f"{conf.DEFAULT_VAL_DS}_loss"
+    else:
+        metric = f"{conf.DEFAULT_VAL_DS}_{_metric}"
 
     if _measure not in ['mean', 'mean-std', 'max', 'std']:
         log("error", f"Unknown {_metric} measure: {_measure}")
@@ -344,8 +332,8 @@ def wait_until(predicate, timeout=2, period=0.2, *args_, **kwargs):
 def create_tcp_socket():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, TCP_SOCKET_BUFFER_SIZE)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, TCP_SOCKET_BUFFER_SIZE)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, C.TCP_SOCKET_BUFFER_SIZE)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, C.TCP_SOCKET_BUFFER_SIZE)
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     return sock
 
@@ -381,16 +369,6 @@ def labels_set(dataset):
     return labels
 
 
-# def angular_metric(u, v):
-#     cos = nn.CosineSimilarity(dim=1, eps=1e-6)
-#     sim = cos(u, v)
-#     angle = torch.rad2deg(torch.acos(sim)).item()
-#     similarity = sim.item()
-#     distance = 1 - similarity
-#
-#     return angle, similarity, distance
-
-
 def save(filename, data):
     unique = np.random.randint(100, 999)
     filename = f"./out/{filename}_{unique}.pkl"
@@ -401,14 +379,31 @@ def save(filename, data):
 
 
 def load(filename):
-    with open(f"../out/{filename}", 'rb') as fp:
+    with open(f"./out/{filename}", 'rb') as fp:
         return pickle.load(fp)
 
 
 def norm_squared(vi, vj):
-    if ML_ENGINE == "PyTorch":
-        return LA.norm(vi - vj).item() ** 2
+    if C.ML_ENGINE.lower() == "tensorflow":
+        fvi = np.concatenate([x.ravel() for x in vi])
+        fvj = np.concatenate([x.ravel() for x in vj])
+        return np.linalg.norm(fvi[0] - fvj[0]) ** 2
     else:
         fvi = np.concatenate([x.ravel() for x in vi])
         fvj = np.concatenate([x.ravel() for x in vj])
         return np.linalg.norm(fvi - fvj) ** 2
+
+
+def replace_many_zeros_columns(df, name):
+    for c in df.columns:
+        if len(df[c].dropna().values) > 0:
+            v = df[c].dropna().values[0]
+            df[c].fillna(v, inplace=True)
+        else:
+            print(f"replacing empty column {c} with values from in_temp column")
+            if c in ['in_cool', 'in_heat']:
+                df[c] = df['in_temp']
+            else:
+                log('error', f"Cannot fill the values of column {c} having not a single value in file {name}")
+                exit()
+    return df
