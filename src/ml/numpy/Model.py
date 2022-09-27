@@ -3,7 +3,7 @@ import time
 import numpy as np
 
 from src.utils import log
-from .layers import *
+from layers import *
 
 
 class Model(object):
@@ -93,7 +93,8 @@ class Model(object):
                 layer_block.set_weights({'w': params[i], 'b': params[i + 1]})
                 i += 2
 
-    def fit(self, lr, momentum=0.9, max_epoch=1000, batch_size=128, shuffle=True, evaluation=False, logger=None):
+    def fit(self, lr, momentum=0.9, max_epoch=1000, batch_size=128, shuffle=True, evaluation=False, logger=None,
+            interval=1):
         """
         Training model by SGD optimizer.
         :param lr: learning rate
@@ -137,6 +138,14 @@ class Model(object):
                                                            - self.lr * _g[layer_name][weight_name]
                             _g[layer_name][weight_name] = -_vg[layer_name][weight_name]
                 self.__gradient_descent(_g)
+
+            if interval and e % interval == 0:
+                # print the training log of whole training set rather than batch:
+                # train_acc = self.measure(self.__train_x_set, self.__train_y_set)
+                self.__train_loss_log.append(_batch_train_loss)
+                self.__train_acc_log.append(_batch_train_acc)
+                print('Epoch[{}] Batch[{}] Batch_Train_Loss=[{}] Batch_Train_Acc=[{}]'
+                      .format(e, e % batch_nums, _batch_train_loss, _batch_train_acc))
 
             if evaluation:
                 # print the training log of whole training set rather than batch:
@@ -293,6 +302,15 @@ class Model(object):
 
     def __str__(self):
         return self.__repr__()
+
+    def measure(self, _x_set, _target_set):
+        _prd_set = self.predict(_x_set)
+        _target_set = np.argmax(_target_set, axis=-1)
+        _acc = 0
+        for i in range(len(_x_set)):
+            if _prd_set[i] == _target_set[i]:
+                _acc += 1
+        return _acc / len(_x_set)
 
 
 if __name__ == '__main__':

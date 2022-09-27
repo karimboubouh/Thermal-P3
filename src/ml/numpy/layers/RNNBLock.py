@@ -1,5 +1,9 @@
 import numpy as np
-from ..utils import *
+
+
+# from ..utils import *
+def tanh(_x_set):
+    return np.tanh(_x_set)
 
 
 class BasicRNN(object):
@@ -136,12 +140,13 @@ if __name__ == '__main__':
         x = np.random.randn(3, 8, 5)
         y = np.random.randn(3, 10)
 
-        # y_ = rnn1.forward(x)
-        # print(y_.shape)
-        # e = y_ - y
-        # print(e.shape)
-        # e_down = rnn1.backward(e)
-        # print(e_down.shape)
+        y_ = rnn1.forward(x)
+        print(y_.shape)
+        e = y_ - y
+        print(e.shape)
+        exit()
+        e_down = rnn1.backward(e)
+        print(e_down.shape)
 
         for i in range(101):
             y_ = rnn1.forward(x)
@@ -176,14 +181,17 @@ if __name__ == '__main__':
 
     def rnn3_func():
         rnn1 = BasicRNN(name='rnn1', units=10, return_last_step=False)
-        rnn1.initial(input_dim=[8, 5])
+        rnn1.initial(input_dim=[8, 10])
         rnn2 = BasicRNN(name='rnn2', units=10, return_last_step=True)
         rnn2.initial(input_dim=[8, 10])
-        x = np.random.randn(3, 8, 5)
+        x = np.random.randn(23, 8, 10)
         y = np.random.randn(3, 10)
         for i in range(101):
             y_1 = rnn1.forward(x)
             y_2 = rnn2.forward(y_1)
+            print(y_1.shape)
+            print(y_2.shape)
+            exit()
             cost2 = y_2 - y
             cost1 = rnn2.backward(cost2)
             g2 = rnn2.gradient(y_1, cost2)
@@ -194,6 +202,6 @@ if __name__ == '__main__':
                 print(f"Epoch{i}: Loss={np.sum(cost2 ** 2) / 3}")
 
 
-    # rnn1_func()
+    rnn1_func()
     # rnn2_func()
-    rnn3_func()
+    # rnn3_func()

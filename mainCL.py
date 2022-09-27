@@ -13,18 +13,30 @@ if __name__ == '__main__':
     # ----------------------
     args = load_conf(cpu=cpu)
     # ----------------------
-    args.model = "LSTM"
+    args.model = "RNN"
     args.epochs = 4
     args.batch_size = 128
-    C.TIME_ABSTRACTION = "5min"
-    C.RECORD_PER_HOUR = 12
+    C.TIME_ABSTRACTION = "15min"
+    C.RECORD_PER_HOUR = 4
     resample = False if C.TIME_ABSTRACTION is None else True
-    # ----------------------
+    # ----------------------s
     fixed_seed(True)
     exp_details(args)
     # Centralized training
-    train_log, homes_logs, predictions = Graph.centralized_training(args, cluster_id, season, resample, cpu,
-                                                                    predict=False, hval=False)
+    train_log, homes_logs, predictions = Graph.centralized_training(args, cluster_id, season, resample, predict=False)
+
+    #
+
+    #
+
+    #
+
+    #
+
+    #
+
+    #
+
     # save(f"CL_logs_{cpu}_cluster_{cluster_id}_{season}_{args.epochs}", [train_log, homes_logs])
     # train_log, homes_logs = load("CL_logs_False_cluster_4_winter_4_620.pkl")
     # plot predictions

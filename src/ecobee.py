@@ -12,7 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 import src.conf as C
 from src.helpers import Map, timeit
-from src.ml import evaluate_home
+from src.ml import evaluate_home, timeseries_generator
 from src.plots import plot_clusters
 from src.utils import log, replace_many_zeros_columns
 
@@ -201,13 +201,13 @@ def prepare_ecobee(dataset, season="summer", abstraction=True, normalize=True, t
     dataset = _clean_empty_in_temp(dataset)
     if abstraction and C.TIME_ABSTRACTION is not None:
         dataset = dataset.resample(C.TIME_ABSTRACTION).mean()
-    X_train, X_test, y_train, y_test, info = _train_test_split(dataset, season, ts_input, normalize)
-    traing, testg = _timeseries_generator(X_train, X_test, y_train, y_test, length=ts_input, batch_size=batch_size)
+    X_train, X_test, Y_train, Y_test, info = _train_test_split(dataset, season, ts_input, normalize)
+    traing, testg = timeseries_generator(X_train, X_test, Y_train, Y_test, length=ts_input, batch_size=batch_size)
     data = Map()
     data['X_train'] = X_train
     data['X_test'] = X_test
-    data['y_train'] = y_train
-    data['y_test'] = y_test
+    data['Y_train'] = Y_train
+    data['Y_test'] = Y_test
     data['generator'] = Map({'train': traing, 'test': testg})
 
     return data, info
@@ -464,32 +464,22 @@ def _train_test_split(data, season, ts_input, normalize=True):
     if len(X_test) < ts_input:
         log('warning', f"Home with {len(X_test)} test data, using {len(X_train)} of train data instead!")
         X_test = X_train
-    y_train = X_train[['in_temp']]
-    y_test = X_test[['in_temp']]
-    in_temp = Map({'train': y_train, 'test': y_test})
+    Y_train = X_train[['in_temp']]
+    Y_test = X_test[['in_temp']]
+    in_temp = Map({'train': Y_train, 'test': Y_test})
 
     if normalize:
         scaler = MinMaxScaler()
         scaler.fit(X_train)
         X_train = scaler.transform(X_train)
         X_test = scaler.transform(X_test)
-        y_train = X_train[:, -1].reshape(-1, 1)
-        y_test = X_test[:, -1].reshape(-1, 1)
+        Y_train = X_train[:, -1].reshape(-1, 1)
+        Y_test = X_test[:, -1].reshape(-1, 1)
     else:
         scaler = None
     info = Map({'scaler': scaler, 'in_temp': in_temp})
 
-    return X_train, X_test, y_train, y_test, info
-
-
-def _timeseries_generator(X_train, X_test, y_train, y_test, length, batch_size=128):
-    TG = tf.keras.preprocessing.sequence.TimeseriesGenerator
-    train_generator = TG(X_train, y_train, length=length, batch_size=batch_size)
-    Xt = np.vstack((X_train[-length:], X_test))
-    yt = np.vstack((y_train[-length:], y_test))
-    test_generator = TG(Xt, yt, length=length, batch_size=batch_size)
-
-    return train_generator, test_generator
+    return X_train, X_test, Y_train, Y_test, info
 
 
 def evaluate_cluster_model(model, cluster_id, season='summer', scope="all", batch_size=16, one_batch=True,

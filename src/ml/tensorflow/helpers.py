@@ -18,7 +18,7 @@ def initialize_models(model_name, input_shape, cpu=False, nbr_models=1, same=Fal
     models = []
     if same:
         # Initialize all models with same weights
-        model, custom_metrics = build_model(model_name, input_shape, cpu)
+        model, custom_metrics = build_model(model_name, input_shape)
         if nbr_models == 1:
             models.append(model)
         else:
@@ -35,7 +35,7 @@ def initialize_models(model_name, input_shape, cpu=False, nbr_models=1, same=Fal
     return models
 
 
-def build_model(model_name, input_shape, cpu=False):
+def build_model(model_name, input_shape):
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
     rmse = tf.keras.metrics.RootMeanSquaredError(name='rmse')
     mape = tf.keras.metrics.MeanAbsolutePercentageError(name='mape')
@@ -62,16 +62,17 @@ def build_model(model_name, input_shape, cpu=False):
     return model, custom_metrics
 
 
-def model_fit(peer, epochs=4, batch_size=128, tqdm_bar=False):
+def model_fit(peer, tqdm_bar=False):
     train = peer.dataset.generator.train
     val = peer.dataset.generator.test
     if tqdm_bar:
         # , validation_data = val
-        peer.model.fit(train, epochs=epochs, batch_size=batch_size, verbose=0,
+        peer.model.fit(train, epochs=peer.params.epochs, batch_size=peer.params.batch_size, verbose=0,
                        callbacks=[TqdmCallback(verbose=2)])
     else:
         # , validation_data=val
-        peer.model.fit(train, epochs=epochs, validation_data=val, batch_size=batch_size, verbose=1)
+        peer.model.fit(train, epochs=peer.params.epochs, validation_data=val, batch_size=peer.params.batch_size,
+                       verbose=1)
     history = peer.model.history.history
     h = list(history.values())
     log('result',
@@ -193,3 +194,12 @@ def me_metric(y_true, y_pred):
 def mpe_metric(y_true, y_pred):
     """mean_percentage_error metric"""
     return K.mean((y_true - y_pred) / y_true) * 100
+
+
+def timeseries_generator(X_train, X_test, Y_train, Y_test, length, batch_size=128):
+    TG = tf.keras.preprocessing.sequence.TimeseriesGenerator
+    train_generator = TG(X_train, Y_train, length=length, batch_size=batch_size)
+    Xt = np.vstack((X_train[-length:], X_test))
+    yt = np.vstack((Y_train[-length:], Y_test))
+    test_generator = TG(Xt, yt, length=length, batch_size=batch_size)
+    return train_generator, test_generator

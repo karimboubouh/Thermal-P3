@@ -27,7 +27,7 @@ if __name__ == '__main__':
     # load dataset and initialize user groups
     dataset, input_shape, homes_ids = load_p2p_dataset(args, cluster_id, season, nb_homes=10)
     # build users models
-    models = initialize_models(args.model, input_shape=input_shape, cpu=cpu, nbr_models=len(dataset), same=True)
+    models = initialize_models(args.model, input_shape=input_shape, nbr_models=len(dataset), same=True)
     topology = full_graph(models)
     # include physical edge devices  (count < 1 to only use simulated nodes)
     edge = edge_devices(args, count=-1)

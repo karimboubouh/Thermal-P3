@@ -22,7 +22,7 @@ args: argparse.Namespace = None
 
 def exp_details(arguments):
     print('Experimental details:')
-    if len(tf.config.experimental.list_physical_devices('GPU')) > 0:
+    if C.ML_ENGINE.lower() == "TensorFlow" and len(tf.config.experimental.list_physical_devices('GPU')) > 0:
         print(f'    Training using      : GPU')
         print(f'    Default GPU Device  : {tf.test.gpu_device_name()}')
     else:
@@ -62,7 +62,7 @@ def args_parser():
                         help="the number of local epochs: E")
     parser.add_argument('--batch_size', type=int, default=128,
                         help="batch size: B")
-    parser.add_argument('--lr', type=float, default=0.1,
+    parser.add_argument('--lr', type=float, default=0.01,
                         help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.9,
                         help='SGD momentum (default: 0.9)')

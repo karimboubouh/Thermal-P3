@@ -44,6 +44,8 @@ class Node(Thread):
             'frac': args.frac,
             'epochs': args.epochs,
             'batch_size': args.batch_size,
+            'lr': args.lr,
+            'momentum': args.momentum,
             'gar': args.gar,
             'D': sum(self.similarity.values()),
             'confidence': 1,
@@ -141,7 +143,7 @@ class Node(Thread):
             # set local model variable
             self.local_model = self.model
         else:
-            train_history = model_fit(self, args.epochs, args.batch_size)
+            train_history = model_fit(self)
             # set local model variable
             self.local_model = self.model
         # evaluate against a one batch or the whole inference dataset
@@ -373,8 +375,8 @@ class Graph:
     @staticmethod
     # @measure_energy
     # @profiler
-    @timeit
-    def centralized_training(args, cluster_id=0, season='summer', resample=False, cpu=False, predict=False, hval=False):
+    # @timeit
+    def centralized_training(args, cluster_id=0, season='summer', resample=False, predict=False, hval=False):
         log('warning', f'ML engine: {C.ML_ENGINE}')
         log('event', 'Centralized training ...')
         # load Ecobee dataset
@@ -385,10 +387,9 @@ class Graph:
         n_features = len(C.DF_CLUSTER_COLUMNS)
         dataset, info = prepare_ecobee(data[season], season, ts_input=n_input, batch_size=args.batch_size)
         log('info', f"Initializing {args.model} model.")
-        print(C.RECORD_PER_HOUR)
-        model = initialize_models(args.model, input_shape=(n_input, n_features), cpu=cpu, nbr_models=1, same=True)[0]
+        model = initialize_models(args.model, input_shape=(n_input, n_features), nbr_models=1, same=True)[0]
         server = Node(0, model, dataset, [], False, {}, args)
-        log('info', f"Start server training on {len(server.dataset.y_train)} samples ...")
+        log('info', f"Start server training on {len(server.dataset.Y_train)} samples ...")
         history = server.fit(args, one_batch=False, inference=True)
         if predict:
             log('event', f"Predicting test temperatures...")
@@ -413,7 +414,7 @@ class Graph:
         histories = dict()
         for peer in self.peers:
             if isinstance(peer, Node):
-                nb = len(peer.dataset.y_train)
+                nb = len(peer.dataset.Y_train)
                 if one_batch:
                     log('info', f"{peer} is performing local training on {self.args.batch_size} out of {nb} samples.")
                 else:
