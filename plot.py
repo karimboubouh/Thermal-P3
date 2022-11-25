@@ -4,7 +4,6 @@ from statsmodels.graphics.tsaplots import plot_pacf
 
 
 def plot(y, model_result, suptitle=''):
-
     rmse = mean_squared_error(y, model_result.Z) ** 0.5
     r2 = r2_score(y, model_result.Z)
 
@@ -43,7 +42,6 @@ def plot(y, model_result, suptitle=''):
 
 
 def plot_input_data(df):
-
     # keep this out of pandas plotting capabilities for compatibility
     # with the rest of the plots
     fig, ax = plt.subplots(2, 1, figsize=(12, 8))

@@ -45,6 +45,12 @@ class Map(dict):
         super(Map, self).__delitem__(key)
         del self.__dict__[key]
 
+    def __getstate__(self):
+        return vars(self)
+
+    def __setstate__(self, state):
+        vars(self).update(state)
+
 
 def create_tcp_socket():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -140,3 +146,9 @@ def get_ip_address():
         return socket.gethostbyname(socket.gethostname())
     finally:
         s.close()
+
+
+def norm_squared(vi, vj):
+    fvi = np.concatenate([x.ravel() for x in vi])
+    fvj = np.concatenate([x.ravel() for x in vj])
+    return np.linalg.norm(fvi - fvj) ** 2

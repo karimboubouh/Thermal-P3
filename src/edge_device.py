@@ -14,7 +14,7 @@ from src.utils import log, wait_until, create_tcp_socket, get_ip_address
 def edge_devices(args, count=1, rand_ids=False):
     if count < 1:
         return None
-    if C.ML_ENGINE != "NumPy":
+    if C.ML_ENGINE not in ["N3", "NumPy"]:
         log('error', f"Mobile devices currently only support NumPy based ML")
         exit()
     if args.mp == 0:
@@ -42,13 +42,13 @@ class Bridge(Thread):
         super(Bridge, self).__init__()
         self.nb_devices = nb_devices
         if rand_ids:
-            self.devices_ids = np.random.choice(range(args.num_users), nb_devices, replace=False)
+            self.devices_ids = np.random.choice(range(args.num_users), nb_devices, replace=False).tolist()
         else:
-            self.devices_ids = np.arange(nb_devices)
-        self.ids = self.devices_ids.tolist()
+            self.devices_ids = np.arange(nb_devices).tolist()
+        self.ids: list = list(range(nb_devices))
         self.args = args
         self.terminate = False
-        self.host = get_ip_address()
+        self.host = get_ip_address()  # "127.0.0.1" # get_ip_address()
         self.port = C.LAUNCHER_PORT
         self.bridges = []
         self.waiting = {}
@@ -82,7 +82,7 @@ class Bridge(Thread):
 
     def populate_device(self, i, model, data, ids, clustered, sim):
         log('info', f"Populating device {i} ...")
-        bridge = self.get_bridge_by_id(i)
+        bridge: DeviceBridge = self.get_bridge_by_id(i)
         assert bridge is not None
         args = {'epochs': self.args.epochs, 'batch_size': self.args.batch_size, 'lr': self.args.lr,
                 'momentum': self.args.momentum, 'gar': self.args.gar, 'frac': self.args.frac}
@@ -123,10 +123,11 @@ class Bridge(Thread):
         self.host = self.sock.getsockname()[0]
 
     def __repr__(self):
-        return f"Bridge{self.sock.getsockname()}"
+        return f"Bridge({self.host}, {self.port})"
+        # return f"Bridge{self.sock.getsockname()}"
 
     def __str__(self):
-        return f"Bridge{self.sock.getsockname()}"
+        return f"Bridge({self.host}, {self.port})"
 
 
 class DeviceBridge(Thread):
@@ -179,7 +180,7 @@ class DeviceBridge(Thread):
                 log('error', f"{self}: Corrupted message : {e}")
             except socket.timeout:
                 pass
-            except struct.error as e:
+            except struct.error:
                 # log('warning', f"{self} struct.error: {e}")
                 pass
             except Exception as e:
@@ -231,8 +232,8 @@ class DeviceBridge(Thread):
             log('warning', f"Calling connect() timeout  after {C.FUNC_TIMEOUT} seconds")
             return False
 
-    def fit(self, inference):
-        self.send(protocol.call_method("fit", inference))
+    def fit(self, args, inference=True, one_batch=False):
+        self.send(protocol.call_method("fit", args, inference, one_batch))
         done = wait_until(self.return_method, C.FUNC_TIMEOUT, 1, "fit")
         if done and self.callbacks['fit']['s']:
             history = self.callbacks['fit']['m']
@@ -277,6 +278,8 @@ class DeviceBridge(Thread):
     @staticmethod
     def handle_logs(data):
         log(data['typ'], data['txt'])
+        # todo remove
+        log("event", data['txt'])
 
     def handle_disconnect(self):
         if self in self.bridge.bridges:

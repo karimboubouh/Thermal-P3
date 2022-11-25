@@ -2,35 +2,58 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib import style
-import pandas as pd
-# matplotlib.use("tkagg")
 from pandas import DataFrame
-
-plt.rcParams['pdf.fonttype'] = 42
-plt.rcParams['ps.fonttype'] = 42
+import pandas as pd
+from scipy.interpolate import interp1d
 
 from src import conf
 from src.conf import EVAL_ROUND
 from src.helpers import Map
 from src.utils import log, verify_metrics, load
 
+# matplotlib.use('TkAgg')
+# matplotlib.use('Agg')
+# matplotlib.use('cairo')
+# matplotlib.use('svg')
+# matplotlib.use('MacOSX')
+
+plt.rcParams['pdf.fonttype'] = 42
+plt.rcParams['ps.fonttype'] = 42
+
 
 def plot_predictions(predictions, info=None):
+    if predictions is None:
+        return
+    fig, ax = plt.subplots()
     if predictions.test is not None:
-        df: DataFrame = predictions.in_temp['test']
+        df: DataFrame = predictions.in_temp['test']  # [:72]
         df['prediction'] = predictions.test
-        if info:
-            df.plot(xlabel=info.xlabel, ylabel=info.ylabel, title="Test Prediction")
-        else:
-            df.plot()
+        print(df)
+        if predictions.n_steps is not None:
+            steps = len(predictions.n_steps)
+            df['n_steps'] = np.nan
+            df['n_steps'][:steps] = predictions.n_steps
+        df.plot(ax=ax)
+        ax.set_xlabel(info.xlabel)
+        ax.set_ylabel(info.ylabel)
+        ax.legend(["Test temperature", "Prediction", "n-steps Prediction"])
+        plt.show()
+    if predictions.n_steps is not None:
+        steps = len(predictions.n_steps)
+        df: DataFrame = predictions.in_temp['test'][:steps].copy()
+        df['prediction'] = predictions.n_steps
+        df.plot(ax=ax)
+        ax.set_xlabel(info.xlabel)
+        ax.set_ylabel(info.ylabel)
+        ax.legend(["Test temperature", f"{steps}-steps Prediction"])
         plt.show()
     if predictions.train is not None:
         df: DataFrame = predictions.in_temp['train']
         df['prediction'] = predictions.train
-        if info:
-            df.plot(xlabel=info.xlabel, ylabel=info.ylabel, title="Test Prediction")
-        else:
-            df.plot()
+        df.plot(ax=ax)
+        ax.set_xlabel(info.xlabel)
+        ax.set_ylabel(info.ylabel)
+        ax.legend(["Train temperature", "Prediction"])
         plt.show()
 
 
@@ -79,12 +102,35 @@ def plot_train_history(logs, metric='accuracy', measure="mean", info=None, plot_
 
     if save_fig:
         unique = np.random.randint(100, 999)
-        plt.savefig(f"../out/EXP_{unique}.pdf")
+        plt.savefig(f"./out/EXP_{unique}.pdf")
 
     plt.show()
 
 
+def scatter_plot(homes, meta):
+    if homes is None:
+        return
+    # style.use('seaborn')
+    style.use('default')
+    # style.use('seaborn-whitegrid')
+    homes_rmse = [h.test.rmse for h in homes.values()]
+    homes_mae = [h.test.mae for h in homes.values()]
+    meta_rmse = [h.test.rmse for h in meta.values()]
+    meta_mae = [h.test.mae for h in meta.values()]
+    fig, ax = plt.subplots(1, 1)
+    ax.scatter(homes_rmse, homes_mae, color='r', alpha=0.6, label='Centralized Model', marker='o')
+    ax.scatter(meta_rmse, meta_mae, color='b', alpha=0.6, label='Personalized Model', marker='o')
+    ax.set_xlabel('Test RMSE')
+    ax.set_ylabel('Test MAE')
+    # ax.set_title('Centralized vs Personalized Models')
+    plt.legend()
+    # plt.grid(linestyle='dashed')
+    plt.show()
+
+
 def box_plot(cl, logs, scope="all", showfliers=False, title=None):
+    if cl is None or logs is None:
+        return
     style.use("ggplot")
     fig, ax = plt.subplots(1, 1)
     # test_loss = np.array([i.test.loss for i in logs.values()])
@@ -260,83 +306,47 @@ def plot_clusters(data, y_km, kmeans, K):
     plt.show()
 
 
+def duplicate(arr, factor):
+    return [item for item in arr for _ in range(factor)]
+
+
+def plot_n_steps_day(r05min, r15min, r30min, r1hour, title="N-step prediction (5 epochs)"):
+    # info
+    info = Map({'xlabel': "Time period", 'ylabel': 'Temperature'})
+    colors = ['blue', 'orange', 'green', 'black', 'grey', 'navy']
+    # dataFrame
+    df = pd.DataFrame()
+    df['test'] = r05min["test"]
+    df['r05min'] = r05min["recursive_pred"]
+    df['r15min'] = duplicate(r15min["recursive_pred"], 3)
+    df['r30min'] = duplicate(r30min["recursive_pred"], 6)
+    df['r1hour'] = duplicate(r1hour["recursive_pred"], 12)
+    # figure
+    ax = df.plot.line(color=colors)
+    ax.set_xlabel(info.xlabel)
+    ax.set_ylabel(info.ylabel)
+    ax.legend(["Test temperature", "Pred 05min", "Pred 15min", "Pred 30min", "Pred 1hour"])
+    plt.title(title)
+    plt.show()
+
+
 if __name__ == '__main__':
-    plot_manymore([
-        {'file': "PT_P3_U_100_0_500.pkl", 'name': "P3, $e = 0$"},
-        {'file': "PT_P3_U_100_2_500.pkl", 'name': "P3, $e = 2$"},
-        {'file': "PT_P3_U_100_10_500.pkl", 'name': "P3, $e = 10$"},
-    ], metric="accuracy", measure="mean-std",
-        info={'xlabel': "iterations", 'ylabel': "Test Accuracy over all peers", 'title': ""}, save=True)
+    result_1hour = load("Predictions_5E_1H_974.pkl")
+    result_30min = load("Predictions_5E_30min_974.pkl")
+    result_15min = load("Predictions_5E_15min_974.pkl")
+    result_05min = load("Predictions_5E_5min_974.pkl")
 
-"""
--------------------------------------------------
-EXP: 1
--------------------------------------------------
-    plot_manymore([
-        {'file': "PT_P3_IID_100_0_500.pkl", 'name': "P3, $e = 0$"},
-        {'file': "PT_P3_IID_100_2_500.pkl", 'name': "P3, $e = 2$"},
-        {'file': "PT_P3_IID_100_10_500.pkl", 'name': "P3, $e = 10$"},
-    ], metric="accuracy", measure="mean-std",
-        info={'xlabel': "iterations", 'ylabel': "Test Accuracy over all peers", 'title': ""}, save=True)
-"""
+    plot_n_steps_day(result_05min, result_15min, result_30min, result_1hour)
+    exit()
 
-"""
--------------------------------------------------
-EXP: 2
--------------------------------------------------
-    plot_manymore([
-        {'file': "PT_P3_NIID_100_0_500.pkl", 'name': "P3, $e = 0$"},
-        {'file': "PT_P3_NIID_100_2_500.pkl", 'name': "P3, $e = 2$"},
-        {'file': "PT_P3_NIID_100_10_500.pkl", 'name': "P3, $e = 10$"},
-    ], metric="accuracy", measure="mean-std",
-        info={'xlabel': "iterations", 'ylabel': "Test Accuracy over all peers", 'title': ""}, save=True)
-"""
+    plot_n_steps_day(result_30min, title="Resolution 30min")
 
-"""
--------------------------------------------------
-EXP: 3
--------------------------------------------------
-    plot_manymore([
-        {'file': "PT_P3_U_100_0_500.pkl", 'name': "P3, $e = 0$"},
-        {'file': "PT_P3_U_100_2_500.pkl", 'name': "P3, $e = 2$"},
-        {'file': "PT_P3_U_100_10_500.pkl", 'name': "P3, $e = 10$"},
-    ], metric="accuracy", measure="mean-std",
-        info={'xlabel': "iterations", 'ylabel': "Test Accuracy over all peers", 'title': ""}, save=True)
-"""
+    plot_n_steps_day(result_15min, title="Resolution 15min")
 
-"""
--------------------------------------------------
-EXP: 4
--------------------------------------------------
-    plot_manymore([
-        {'file': "PT_P3_IID_100_2_500.pkl", 'name': "P3$_{\\bf{Server}}$ (all peers)"},
-        {'file': "PT_P3_MOB_100_2_500.pkl", 'name': "P3$_{\\bf{Mobile}}$ (one device)"},
-    ], metric="accuracy", measure="mean-std",
-        info={'xlabel': "iterations", 'ylabel': "Test Accuracy", 'title': ""}, save=True)
-"""
+    plot_n_steps_day(result_05min, title="Resolution 5min")
 
-"""
--------------------------------------------------
-EXP: 5
--------------------------------------------------
-    plot_manymore([
-        {'file': "PT_P3_IID_100_2_500.pkl", 'name': r"P3 $_{(P2P)}$"},
-        {'file': "PT_MP_IID_100_10_500.pkl", 'name': r"MP $_{(P2P)}$"},
-        {'file': "PT_FL_IID_100_1_500.pkl", 'name': r"FedAvg $_{(FL)}$"},
-    ], metric="accuracy", measure="mean-std",
-        info={'xlabel': "iterations", 'ylabel': "Test Accuracy", 'title': ""}, save=True)
-"""
-
-"""
--------------------------------------------------
-EXP: 6
--------------------------------------------------
-    plot_manymore([
-        {'file': "MP_100_2_W_0.pkl", 'name': r"$\rho = 1$"},
-        {'file': "MP_100_2_W_0.33.pkl", 'name': r"$\rho = 0.6$"},
-        {'file': "MP_100_2_W_0.66.pkl", 'name': r"$\rho = 0.3$"},
-        {'file': "MP_100_2_W_0.95.pkl", 'name': r"$\rho = 0.05$"},
-        {'file': "MP_100_2_W_0.99.pkl", 'name': r"$\rho = 0.01$"},
-    ], metric="accuracy", measure="mean-std",
-        info={'xlabel': "iterations", 'ylabel': "Test Accuracy", 'title': ""}, save=True)
-"""
+    # result_05min = {
+    #     'test': [],
+    #     'direct_pred': [],
+    #     'recursive_pred': [],
+    # }

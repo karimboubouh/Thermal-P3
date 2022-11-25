@@ -1,5 +1,4 @@
 import time
-from copy import deepcopy
 from itertools import combinations
 from time import sleep
 from typing import List
@@ -7,9 +6,6 @@ from typing import List
 import numpy as np
 from scipy.spatial import distance
 
-from src.edge_device import Bridge
-from src.helpers import Map
-from src.ml import train_val_test
 from src.p2p import Node, Graph
 from src.utils import cluster_peers, similarity_matrix, node_topology, log
 
@@ -17,8 +13,10 @@ from src.utils import cluster_peers, similarity_matrix, node_topology, log
 def central_graph(models):
     nb_nodes = len(models)
     similarities = np.zeros((nb_nodes, nb_nodes))
-    similarities[nb_nodes - 1] = similarities.T[nb_nodes - 1] = 1
-    similarities[nb_nodes - 1][nb_nodes - 1] = 0
+    # similarities[nb_nodes - 1] = similarities.T[nb_nodes - 1] = 1
+    # similarities[nb_nodes - 1][nb_nodes - 1] = 0
+    similarities[-1] = similarities.T[-1] = 1
+    similarities[-1][-1] = 0
     adjacency = similarities != 0
     clusters = {0: np.arange(nb_nodes)}
 
@@ -118,13 +116,13 @@ def network_graph(topology, models, dataset, home_ids, args, edge=None):
     t = time.time()
     # train, val, test = train_val_test(train_ds, user_groups[0], args)
     for i in range(nbr_nodes):
-        neighbors_ids, similarity = node_topology(i, topology)
+        neighbors_ids, sim = node_topology(i, topology)
         if edge and edge.is_edge_device(i):
-            device_bridge = edge.populate_device(i, models[i], dataset, neighbors_ids, clustered, similarity)
+            device_bridge = edge.populate_device(i, models[i], dataset[home_ids[i]], neighbors_ids, clustered, sim)
             device_bridge.neighbors_ids = neighbors_ids
             peers.append(device_bridge)
         else:
-            peer = Node(i, models[i], dataset[home_ids[i]], neighbors_ids, clustered, similarity, args)
+            peer = Node(i, models[i], dataset[home_ids[i]], neighbors_ids, clustered, sim, args)
             peer.start()
             peers.append(peer)
     connect_to_neighbors(peers)

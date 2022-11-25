@@ -40,7 +40,7 @@ class ConfScreen(Screen):
 
     def on_request_data(self, checkbox, value):
         if value:
-            # print('The checkbox', checkbox, 'is active', 'and', checkbox.state, 'state')
+            # print('The checkbox', checkbox, 'is active', 'and', value, 'state')
             self.ids.ds_path = ""
             self.ids.ds_label.size_hint_y = None
             self.ids.ds_label.size_hint_x = None
@@ -78,7 +78,7 @@ class ConfScreen(Screen):
         host = self.ids.bridge_host.text
         port = int(self.ids.bridge_port.text)
         self.connect_logs = f"HOST:{self.manager.node.host} / PORT:{self.manager.node.port}\n"
-        self.dialog = MDDialog(title="Connection")  # , auto_dismiss=False
+        self.dialog = MDDialog(title="Connection ...")  # , auto_dismiss=False
         try:
             if self.manager.node.connect_bridge(host, port):
                 self.ids.connect_btn.disabled = True
@@ -103,9 +103,8 @@ class ConfScreen(Screen):
         pref = ""
         pref = "\n".join([pref, f"[b]Id[/b] {self.manager.node.id}"])
         pref = "\n".join([pref, f"[b]Neighbors[/b] {self.manager.node.neighbors_ids}"])
-        pref = "\n".join([pref, f"[b]Dataset[/b] {len(self.manager.node.train)} train samples"])
-        pref = " | ".join([pref, f"{len(self.manager.node.val)} validation samples"])
-        pref = " | ".join([pref, f"{len(self.manager.node.inference)} test samples"])
+        pref = "\n".join([pref, f"[b]Dataset[/b] {len(self.manager.node.dataset['Y_train'])} train samples"])
+        pref = " | ".join([pref, f"{len(self.manager.node.dataset['Y_test'])} test samples"])
         pref = "\n".join([pref, f"[b]Epochs[/b] {self.manager.node.params.epochs} epochs."])
         pref = "\n".join([pref, f"[b]Batch size[/b] {self.manager.node.params.batch_size} samples."])
         self.connect_logs = pref

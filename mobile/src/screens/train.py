@@ -15,7 +15,7 @@ class TrainScreen(Screen):
         self.manager.client.disconnect()
         self.manager.current = 'welcome'
 
-    def log(self, typ, txt):
+    def log(self, typ, txt, end=""):
         entry = None
         if typ == "info":
             entry = f"[color=FFFFFF]{txt}[/color]"
@@ -31,5 +31,7 @@ class TrainScreen(Screen):
             if VERBOSE > 0:
                 entry = f"[color=C0C0C0]{txt}[/color]"
         if entry:
+            if end == "\r":
+                self.logs = self.logs[:self.logs.rfind('\n')]
             self.logs = '\n'.join([self.logs, entry])
         return self.logs

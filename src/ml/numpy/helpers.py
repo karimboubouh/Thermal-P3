@@ -94,8 +94,8 @@ def evaluate_home(home_id, model, generator, batch_size=16, one_batch=False, dty
     else:
         h = model.evaluate(generator, verbose=0, batch_size=batch_size)
     one = "[^]" if one_batch else "[*]"
-    history = Map({'loss': h[0], 'rmse': h[1], 'mape': h[2], 'mae': h[3]})
-    log('result', f"Home {home_id} || {dtype} {one} MSE: {h[0]:4f} | RMSE: {h[1]:4f}, MAPE: {h[2]:4f} | MAE {h[3]:4f}")
+    history = Map({'loss': h[0], 'rmse': h[1], 'mae': h[2]})
+    log('result', f"Home {home_id} || {dtype} {one} MSE: {h[0]:4f} | RMSE: {h[1]:4f} | MAE {h[2]:4f}")
     return history
 
 

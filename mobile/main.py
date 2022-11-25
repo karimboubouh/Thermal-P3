@@ -3,11 +3,11 @@ from kivy.lang.builder import Builder
 from kivymd.app import MDApp
 from src.screens import *
 
-# Window.size = (336, 600)
+Window.size = (336, 600)
 Window.release_all_keyboards()
 
 
-class HgOApp(MDApp):
+class ThermalApp(MDApp):
 
     def build(self):
         self.theme_cls.theme_style = "Dark"
@@ -16,4 +16,4 @@ class HgOApp(MDApp):
         return Builder.load_file('src/template.kv')
 
 
-HgOApp().run()
+ThermalApp().run()

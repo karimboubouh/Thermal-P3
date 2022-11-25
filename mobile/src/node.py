@@ -10,7 +10,8 @@ from kivymd.toast import toast
 
 from src import protocol
 from src.conf import SOCK_TIMEOUT, TCP_SOCKET_SERVER_LISTEN, ALGORITHM_MODULE
-from src.ml import model_fit, model_inference, train_for_x_epoch, evaluate_model, get_params, set_params
+from src.ml import model_fit, model_inference, train_for_x_epochs, evaluate_model, get_params, set_params, \
+    train_for_x_batches
 from src.ml.numpy.datasets import get_local_data
 from src.utils import Map, create_tcp_socket, labels_set, get_ip_address
 
@@ -35,10 +36,10 @@ class Node(Thread):
         self.neighbors = []
         self.clustered = None
         self.similarity = []
-        self.train = None
-        self.val = None
-        self.test = None
-        self.inference = None
+        self.dataset = None
+        # self.val = None
+        # self.test = None
+        # self.inference = None
         self.terminate = False
         self.params = Map()
         self.conn_attempts = 0
@@ -71,10 +72,10 @@ class Node(Thread):
         self.sock.close()
         toast(f"Node Stopped")
 
-    def log(self, typ, txt, remote=True):
+    def log(self, typ, txt, end="", remote=True):
         if remote:
             self.bridge.send(protocol.log(typ, txt))
-        self.manager.get_screen("train").log(typ, txt)
+        self.manager.get_screen("train").log(typ, txt, end=end)
         print(f"{typ.upper()} >> {txt}")
 
     def connect_bridge(self, bridge_host, bridge_port):
@@ -128,21 +129,29 @@ class Node(Thread):
         for neighbor in active:
             self.send(neighbor, msg)
 
-    def fit(self, inference=True):
+    def fit(self, args, inference=True, one_batch=False):
         # train the model
-        history = model_fit(self)
-        # set local model variable
-        self.local_model = self.model
+        if one_batch:
+            train_history = train_for_x_batches(self, batches=args.epochs, evaluate=False)
+            # set local model variable
+            self.local_model = self.model
+        else:
+            train_history = model_fit(self)
+            # set local model variable
+            self.local_model = self.model
+        # evaluate against a one batch or the whole inference dataset
         if inference:
-            model_inference(self)
+            test_history = model_inference(self, batch_size=args.batch_size)
+        else:
+            test_history = None
 
-        return history
+        return Map({'train': train_history, 'test': test_history})
 
     def train_one_epoch(self, batches=1, evaluate=False):
-        return train_for_x_epoch(self, batches, evaluate)
+        return train_for_x_batches(self, batches, evaluate)
 
-    def evaluate(self, dataholder, one_batch=True):
-        return evaluate_model(self.model, dataholder, one_batch)
+    def evaluate(self, one_batch=True):
+        return evaluate_model(self, one_batch=one_batch, batch_size=self.params.batch_size)
 
     def save_model(self):
         pass
@@ -328,9 +337,10 @@ class Bridge(Thread):
                         print(f"Unknown type of message from bridge: {data['mtype']}")
             except pickle.UnpicklingError as e:
                 print(f"Corrupted message from bridge : {e}")
-            except socket.timeout as e:
-                traceback.print_exc()
-                print(f"ERROR: TIMIII {e}")
+            except socket.timeout:
+                # traceback.print_exc()
+                self.terminate = True
+                print(f"Device disconnect after socket timeout (node.py, line 322)")
             except struct.error as e:
                 pass
             except Exception as e:
@@ -375,10 +385,7 @@ class Bridge(Thread):
         self.device.similarity = info['similarity']
         self.device.neighbors_ids = info['ids']
         if info.get('dataset', None):
-            self.device.train = info['dataset']['train']
-            self.device.val = info['dataset']['val']
-            self.device.test = info['dataset']['test']
-            self.device.inference = info['dataset']['inference']
+            self.device.dataset = info['dataset']
         else:
             ds_duplicate = info.get('ds_duplicate', 1)
             num_users = info.get('num_users', 1)
@@ -408,12 +415,11 @@ class Bridge(Thread):
         connected = self.device.connect(nid, host, port)
         self.send(protocol.return_method("connect", connected))
 
-    def method_fit(self, inference):
-        labels = labels_set(self.device.train)
-        train_size = len(self.device.train.dataset)
-        info = f"{self.device} is performing local training on {train_size} samples of labels {labels}."
+    def method_fit(self, args, inference=True, one_batch=False):
+        train_size = len(self.device.dataset['Y_train'])
+        info = f"{self.device} is performing local training on {train_size} samples..."
         self.device.log('info', info)
-        history = self.device.fit(inference)
+        history = self.device.fit(args, inference=inference, one_batch=one_batch)
         self.send(protocol.return_method("fit", {'s': True, 'm': history}))
         self.device.log('warning', "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - -", remote=False)
 
@@ -421,6 +427,7 @@ class Bridge(Thread):
         try:
             if self.learner is None:
                 self.learner = import_module(f'src.learners.{ALGORITHM_MODULE}', __name__)
+                print(f"Loading learner :: {ALGORITHM_MODULE}")
             func_name = getattr(self.learner, d['method'].replace('execute.', ''))
             func_name(self.device, *d['args'], **d['kwargs'])
         except ModuleNotFoundError as e:

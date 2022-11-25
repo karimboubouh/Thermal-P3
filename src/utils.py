@@ -22,7 +22,7 @@ args: argparse.Namespace = None
 
 def exp_details(arguments):
     print('Experimental details:')
-    if C.ML_ENGINE.lower() == "TensorFlow" and len(tf.config.experimental.list_physical_devices('GPU')) > 0:
+    if C.ML_ENGINE.lower() == "tensorflow" and len(tf.config.experimental.list_physical_devices('GPU')) > 0:
         print(f'    Training using      : GPU')
         print(f'    Default GPU Device  : {tf.test.gpu_device_name()}')
     else:
@@ -89,12 +89,12 @@ def args_parser():
     return args
 
 
-def load_conf(cpu=True):
+def load_conf(use_cpu=False):
     if C.ML_ENGINE.lower() == "tensorflow":
         tf.get_logger().setLevel(logging.ERROR)
         tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
-        if cpu:
+        if use_cpu:
             os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
     # sys.argv = ['']
@@ -407,3 +407,20 @@ def replace_many_zeros_columns(df, name):
                 log('error', f"Cannot fill the values of column {c} having not a single value in file {name}")
                 exit()
     return df
+
+
+def nb_pred_steps(pred, period: str):
+    time_abs = [None, "5min", "15min", "30min", "1H"]
+    log("info", f"C.TIME_ABSTRACTION={C.TIME_ABSTRACTION} || C.RECORD_PER_HOUR={C.RECORD_PER_HOUR}")
+    if period == "1hour" and C.TIME_ABSTRACTION in time_abs:
+        steps = C.RECORD_PER_HOUR
+    elif period == "1day" and C.TIME_ABSTRACTION in time_abs:
+        steps = 24 * C.RECORD_PER_HOUR
+    elif period == "1week" and C.TIME_ABSTRACTION in time_abs:
+        steps = 7 * 24 * C.RECORD_PER_HOUR
+    elif period in ["test", "all"]:
+        steps = len(pred)
+    else:
+        steps = None
+
+    return steps

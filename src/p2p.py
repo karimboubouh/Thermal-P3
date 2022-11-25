@@ -11,11 +11,12 @@ import numpy as np
 
 from src import protocol
 import src.conf as C
-from src.ecobee import read_ecobee_cluster, prepare_ecobee, evaluate_cluster_model, make_predictions
+from src.ecobee import read_ecobee_cluster, prepare_ecobee, evaluate_cluster_model, make_predictions, \
+    make_n_step_predictions
 from src.helpers import Map, timeit
 from src.ml import get_params, set_params, train_for_x_batches, initialize_models, evaluate_model
 from src.ml import model_fit, model_inference
-from src.utils import log, create_tcp_socket, get_ip_address
+from src.utils import log, create_tcp_socket, get_ip_address, save
 
 
 class Node(Thread):
@@ -159,7 +160,7 @@ class Node(Thread):
 
     def evaluate(self, one_batch=False):
         # return model_inference(self, batch_size=self.params.batch_size, one_batch=one_batch)
-        return evaluate_model(self, one_batch=one_batch)
+        return evaluate_model(self, one_batch=one_batch, batch_size=self.params.batch_size)
 
     def save_model(self):
         pass
@@ -376,19 +377,21 @@ class Graph:
     # @measure_energy
     # @profiler
     # @timeit
-    def centralized_training(args, cluster_id=0, season='summer', resample=False, predict=False, hval=False):
+    def centralized_training(args, cluster_id=0, season='summer', resample=False, predict=False, n_ahead=1,
+                             n_step_predict=False, hval=False, meta=True):
         log('warning', f'ML engine: {C.ML_ENGINE}')
         log('event', 'Centralized training ...')
         # load Ecobee dataset
         log('info', f'Loading processed data for cluster {cluster_id} and season: {season}...')
         data = read_ecobee_cluster(cluster_id, season, resample=resample)
         # prepare Ecobee data to generate timeseries dataset with n_input samples in history
-        n_input = 24 * C.RECORD_PER_HOUR
+        n_input = C.LOOK_BACK * C.RECORD_PER_HOUR
         n_features = len(C.DF_CLUSTER_COLUMNS)
-        dataset, info = prepare_ecobee(data[season], season, ts_input=n_input, batch_size=args.batch_size)
+        shape = (n_input, n_features)
+        ds, info = prepare_ecobee(data[season], season, ts_input=n_input, n_ahead=n_ahead, batch_size=args.batch_size)
         log('info', f"Initializing {args.model} model.")
-        model = initialize_models(args.model, input_shape=(n_input, n_features), nbr_models=1, same=True)[0]
-        server = Node(0, model, dataset, [], False, {}, args)
+        model = initialize_models(args.model, input_shape=shape, n_outputs=n_ahead, nbr_models=1, same=True)[0]
+        server = Node(0, model, ds, [], False, {}, args)
         log('info', f"Start server training on {len(server.dataset.Y_train)} samples ...")
         history = server.fit(args, one_batch=False, inference=True)
         if predict:
@@ -396,15 +399,35 @@ class Graph:
             predictions = make_predictions(server, info, ptype="test")
         else:
             predictions = None
+        if n_step_predict:
+            log('event', f"Predicting n steps ahead temperatures using previous predictions ...")
+            n_steps_predictions = make_n_step_predictions(server, period="1day", info=info)
+            if predict:
+                predictions["n_steps"] = n_steps_predictions.n_steps
+                steps = len(n_steps_predictions.n_steps)
+                result = {
+                    'test': info.in_temp.test[:steps].values.flatten(),
+                    'direct_pred': predictions.test[:steps],
+                    'recursive_pred': n_steps_predictions.n_steps,
+                }
+                save(f"Predictions_{args.epochs}E_{C.TIME_ABSTRACTION}", result)
+
+                print(f"Actual data:\n{info.in_temp.test[:steps].values.flatten()}")
+                print(f"Direct Prediction:\n{predictions.test[:steps]}")
+                print(f"Recursive Prediction:\n{n_steps_predictions.n_steps}")
+        else:
+            n_steps_predictions = None
         if hval:
             log('event', f"Evaluation of the learned model using individual home records")
-            home_histories = evaluate_cluster_model(server.model, cluster_id, season=season, batch_size=args.batch_size,
-                                                    one_batch=True, resample=resample)
+            home_histories, meta_histories = evaluate_cluster_model(server.model, cluster_id, season=season,
+                                                                    batch_size=args.batch_size, one_batch=True,
+                                                                    resample=resample, meta=meta)
         else:
             home_histories = None
+            meta_histories = None
         server.stop()
 
-        return history, home_histories, predictions
+        return history, predictions, n_steps_predictions, home_histories, meta_histories
 
     # @measure_energy
     # @profiler

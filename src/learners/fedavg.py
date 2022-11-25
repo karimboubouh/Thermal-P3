@@ -1,25 +1,25 @@
-import time
-
 from tqdm import tqdm
 
 from src import protocol
 from src.conf import EVAL_ROUND, WAIT_TIMEOUT, WAIT_INTERVAL
-from src.ml import model_inference, train_for_x_epoch, GAR
+from src.ml import model_inference, GAR, train_for_x_batches, train_for_x_epochs
 from src.p2p import Graph, Node
 from src.utils import log, wait_until
 
 name = "Federated averaging (FedAvg)"
+# Server is peer.neighbors[-1]
+NB_BATCHES = 1
 
 
 def collaborate(graph: Graph, args):
     args.server_id = len(graph.peers) - 1
-    log("info", f"Initializing Model Propagation...")
+    log("info", f"Initializing FedAvg...")
     # init peers parameters
     for peer in graph.peers:
         peer.execute(train_init, args)
     graph.join()
 
-    log("info", f"Collaborative training for T = {graph.args.rounds} rounds")
+    log("info", f"Federated training for T = {graph.args.rounds} rounds")
     T = tqdm(range(graph.args.rounds), position=0)
     for t in T:
         for peer in graph.peers:
@@ -27,7 +27,7 @@ def collaborate(graph: Graph, args):
         graph.join(t)
 
     # stop train
-    log("info", f"Evaluating the output of the collaborative training.")
+    log("info", f"Evaluating the output of the federated training.")
     for peer in graph.peers:
         peer.execute(train_stop, args)
     graph.join()
@@ -44,7 +44,7 @@ def train_init(peer: Node, args):
     peer.params.exchanges = 0
     if peer.id == args.server_id:
         # server:
-        r = peer.evaluate(peer.inference, one_batch=True)
+        r = peer.evaluate()
         peer.params.logs = [r]
         peer.params.models = {i: [] for i in range(args.rounds)}
 
@@ -58,24 +58,29 @@ def train_step(peer: Node, t, args):
             # Server
             wait_until(enough_received, WAIT_TIMEOUT * 100, WAIT_INTERVAL * 10, peer, t, len(peer.neighbors))
             w = GAR(peer, [v for i, v in peer.V[t]])
+            update_model(peer, w, evaluate=(t % EVAL_ROUND == 0))
             msg = protocol.train_step(t, peer.get_model_params())  # not grads
             peer.broadcast(msg)
-            peer.set_model_params(w)
-            if t % EVAL_ROUND == 0:
-                t_eval = peer.evaluate(peer.inference, one_batch=True)
-                peer.params.logs.append(t_eval)
         else:
             if t > 0:
                 wait_until(server_received, WAIT_TIMEOUT * 100, WAIT_INTERVAL * 10, peer, t)
-                w_server = peer.V[t - 1][0][1]
+                w_server = peer.V[t - 1][0][1]  # [round][n-message(0 in FL)][(id, W)]
                 peer.set_model_params(w_server)
             # Worker
-            train_for_x_epoch(peer, args.epochs)
+            train_for_x_epochs(peer, epochs=peer.params.epochs, evaluate=False, use_tqdm=False)
+            # train_for_x_batches(peer, batches=NB_BATCHES, evaluate=False, use_tqdm=False)
+            server = peer.neighbors[-1]
             msg = protocol.train_step(t, peer.get_model_params())  # not grads
-            server = peer.neighbors[0]
             peer.send(server, msg)
-            # peer.params.server.params.models[t].append(peer.get_model_params())
+
     return
+
+
+def update_model(peer: Node, w, evaluate=False):
+    peer.set_model_params(w)
+    if evaluate:
+        t_eval = peer.evaluate()
+        peer.params.logs.append(t_eval)
 
 
 def train_stop(peer: Node, args):

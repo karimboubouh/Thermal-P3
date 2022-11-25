@@ -2,59 +2,47 @@ import src.conf as C
 from src import plots
 from src.helpers import Map
 from src.p2p import Graph
-from src.plots import box_plot
+from src.plots import box_plot, scatter_plot
 from src.utils import load_conf, fixed_seed, exp_details, save, load
 
+"""
+TODO :
+ --> Scale data between 1 and -1: http://apmonitor.com/do/index.php/Main/LSTMNetwork
+ --> Review LSTM params: https://github.com/srivatsan88/End-to-End-Time-Series/blob/master/Multivariate_Time_Series_Modeling_using_LSTM.ipynb
+ --> RMSE ::     print "%.2f RMSE" % (math.sqrt(mean_squared_error(true_vals, predictions)))
+"""
+
 if __name__ == '__main__':
-    # ----------------------¬
-    cpu = False
-    cluster_id = 4
-    season = 'summer'
-    # ----------------------
-    args = load_conf(cpu=cpu)
-    # ----------------------
-    args.model = "RNN"
-    args.epochs = 4
-    args.batch_size = 128
-    C.TIME_ABSTRACTION = "15min"
-    C.RECORD_PER_HOUR = 4
+    args = load_conf(use_cpu=False)
+    # Configuration ------------------>
+    cluster_id = 0  # 0
+    season = 'summer'  # 'summer'
+    args.model = "LSTM"
+    args.epochs = 5  # 5
+    args.batch_size = 64
+    C.TIME_ABSTRACTION = "1H"
+    C.RECORD_PER_HOUR = 1
     resample = False if C.TIME_ABSTRACTION is None else True
-    # ----------------------s
+
+    # Details ------------------------>
     fixed_seed(True)
     exp_details(args)
-    # Centralized training
-    train_log, homes_logs, predictions = Graph.centralized_training(args, cluster_id, season, resample, predict=False)
 
-    #
+    # Centralized Training ----------->
+    results = Graph.centralized_training(args, cluster_id, season, resample, predict=True, n_ahead=1)
+    # save(f"CL_{C.TIME_ABSTRACTION}_cluster_{cluster_id}_{season}_{args.epochs}", results)
+    # results = load("CL_1H_cluster_0_summer_1_974.pkl")
+    train_log, predictions, n_steps_predictions, homes_logs, meta_logs = results
 
-    #
-
-    #
-
-    #
-
-    #
-
-    #
-
-    # save(f"CL_logs_{cpu}_cluster_{cluster_id}_{season}_{args.epochs}", [train_log, homes_logs])
-    # train_log, homes_logs = load("CL_logs_False_cluster_4_winter_4_620.pkl")
+    # Plots -------------------------->
     # plot predictions
-    # info = Map({'xlabel': "Time period", 'ylabel': 'Temperature'})
-    # plots.plot_predictions(predictions, info)
+    info = Map({'xlabel': "Time period", 'ylabel': 'Temperature'})
+    plots.plot_predictions(predictions, info)
+    plots.plot_predictions(n_steps_predictions, info)
     # plot box_plot
-    # info = {'xlabel': "Epochs", 'ylabel': 'Validation RMSE Loss'}
-    # box_plot(train_log, homes_logs, showfliers=False, title=f"Cluster {cluster_id} || Season {season}")
-    print("END.")
-#
+    box_plot(train_log, homes_logs, showfliers=False)
+    # plot scatter_plot
+    scatter_plot(homes_logs, meta_logs)
 
-"""
----> Centralized learning of all clusters
-    train_logs = {}
-    for c in range(6):
-        for s in ['spring', 'summer', 'autumn']:
-            log('event', f"Training model of cluster {c} for {s} season...")
-            logs = Graph.centralized_training(args, cluster_id=c, season=s)
-            train_logs[f"{c}_{s}"] = logs
-    save(f"CL_logs_CPU_ALL_{args.epochs}_{TIME_ABSTRACTION}", train_logs)
-"""
+    # END ---------------------------->
+    print("END.")

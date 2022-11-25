@@ -1,20 +1,17 @@
 import os
 from itertools import combinations
-from math import sqrt
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 from netCDF4 import Dataset
 from sklearn.cluster import KMeans
-from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import MinMaxScaler
 
 import src.conf as C
 from src.helpers import Map, timeit
-from src.ml import evaluate_home, timeseries_generator
-from src.plots import plot_clusters
-from src.utils import log, replace_many_zeros_columns
+from src.ml import evaluate_home, timeseries_generator, meta_train, model_predict, n_steps_model_predict
+# from src.plots import plot_clusters
+from src.utils import log, replace_many_zeros_columns, nb_pred_steps
 
 
 def get_ecobee(force=False, n_clusters=6, get_season=None, get_cluster=None):
@@ -28,7 +25,7 @@ def get_ecobee(force=False, n_clusters=6, get_season=None, get_cluster=None):
         for name, season in seasons.items():
             season_data[name] = _get_cleaned_season(data, season)
         # cluster homes
-        clusters = _cluster_homes(season_data, K=n_clusters)
+        clusters = _cluster_homes(season_data, K=n_clusters, plot=True)
 
         # save season data
         dataset = Map()
@@ -193,7 +190,7 @@ def read_processed_dataset(K=6):
 
 
 def prepare_ecobee(dataset, season="summer", abstraction=True, normalize=True, ts_input=24 * C.RECORD_PER_HOUR,
-                   batch_size=128):
+                   batch_size=128, n_ahead=1):
     """Expect dataset to represent a season within a cluster"""
     if not isinstance(dataset, pd.DataFrame):
         log('error', f"Provided dataset must be a pandas dataframe")
@@ -202,13 +199,14 @@ def prepare_ecobee(dataset, season="summer", abstraction=True, normalize=True, t
     if abstraction and C.TIME_ABSTRACTION is not None:
         dataset = dataset.resample(C.TIME_ABSTRACTION).mean()
     X_train, X_test, Y_train, Y_test, info = _train_test_split(dataset, season, ts_input, normalize)
-    traing, testg = timeseries_generator(X_train, X_test, Y_train, Y_test, length=ts_input, batch_size=batch_size)
+    tr, ts = timeseries_generator(X_train, X_test, Y_train, Y_test, length=ts_input, batch_size=batch_size,
+                                  n_ahead=n_ahead)
     data = Map()
     data['X_train'] = X_train
     data['X_test'] = X_test
     data['Y_train'] = Y_train
     data['Y_test'] = Y_test
-    data['generator'] = Map({'train': traing, 'test': testg})
+    data['generator'] = Map({'train': tr, 'test': ts})
 
     return data, info
 
@@ -224,23 +222,25 @@ def make_predictions(node, info: Map, ptype="test"):
         test_pred = model_predict(node.model, node.dataset.generator.test)
         tmp_test = np.repeat(test_pred, n_features).reshape(test_pred.shape[0], n_features)
         predictions.test = info.scaler.inverse_transform(tmp_test)[:, -1]
+        # print(predictions.test)
 
     return predictions
 
 
-def model_predict(model, generator):
-    preds = []
-    test_size = len(generator)
-    log('info', f"Prediction for {test_size} entries...")
-    for i in range(test_size):
-        X = generator[i][0]
-        if i % 10 == 0:
-            loader = "\\" if i % 20 == 0 else "/"
-            print(f"> {loader} {i}/{test_size} ...", end="\r")
-        pred = model.predict(X, verbose=0)[0].item()
-        preds.append(pred)
-    print()
-    return np.array(preds)
+def make_n_step_predictions(node, period: str, info: Map):
+    predictions = Map({'train': None, 'n_steps': None, 'in_temp': info.in_temp})
+    accepted_periods = ["1hour", "1day", "1week", "all"]
+    if period not in accepted_periods:
+        log('error', f"N step predictions accept the following values: {accepted_periods}")
+        return None
+
+    steps = nb_pred_steps(info.in_temp.test, period)
+    n_features = len(C.DF_CLUSTER_COLUMNS)
+    test_pred = n_steps_model_predict(node.model, node.dataset, steps)
+    tmp_test = np.repeat(test_pred, n_features).reshape(test_pred.shape[0], n_features)
+    predictions.n_steps = info.scaler.inverse_transform(tmp_test)[:, -1]
+
+    return predictions
 
 
 # ------------------------- Local functions -----------------------------------
@@ -483,31 +483,49 @@ def _train_test_split(data, season, ts_input, normalize=True):
 
 
 def evaluate_cluster_model(model, cluster_id, season='summer', scope="all", batch_size=16, one_batch=True,
-                           resample=True):
+                           resample=True, meta=True):
     folder = os.path.join(C.DATA_CLUSTERS_DIR, f"cluster_{cluster_id}")
     cfile = os.path.join(folder, f"homes.csv")
     homes_ids = list(pd.read_csv(cfile)["ids"].values)
     homes_pd: dict = get_ecobee_by_home_ids(homes_ids, season=season, resample=resample)
     n_input = 24 * C.RECORD_PER_HOUR
     home_histories = {}
+    meta_histories = {}
+    train_meta = test_meta = model_file = None
     i = 1
+    if meta:
+        model_file = "Model.h5"
+        model.save(model_file, save_format="h5")
     for home_id, df_home in homes_pd[season].items():
         log('info', f"Evaluating Home {i} with id: {home_id}")
         home, _ = prepare_ecobee(df_home, season=season, ts_input=n_input, batch_size=batch_size)
         if scope.lower() == "test":
             test_history = evaluate_home(i, model, home.generator.test, batch_size=batch_size, one_batch=one_batch)
             train_history = None
+            if meta:
+                home_model, _ = meta_train(i, model_file, home.generator.train, batch_size=batch_size)
+                test_meta = evaluate_home(i, home_model, home.generator.test, batch_size=batch_size,
+                                          one_batch=one_batch, dtype="META Test")
+                train_meta = None
         else:
-            test_history = evaluate_home(i, model, home.generator.test, batch_size=batch_size, one_batch=one_batch)
+            test_history = evaluate_home(i, model, home.generator.test, batch_size=batch_size)
             train_history = evaluate_home(i, model, home.generator.train, batch_size=batch_size, one_batch=one_batch,
                                           dtype="Train")
+            if meta:
+                home_model, _ = meta_train(i, model_file, home.generator.train, batch_size=batch_size)
+                test_meta = evaluate_home(i, home_model, home.generator.test, batch_size=batch_size,
+                                          one_batch=one_batch, dtype="META Test")
+                train_meta = evaluate_home(i, home_model, home.generator.train, batch_size=batch_size,
+                                           one_batch=one_batch, dtype="META Train")
         i = i + 1
         home_histories[home_id] = Map({'train': train_history, 'test': test_history})
+        meta_histories[home_id] = Map({'train': train_meta, 'test': test_meta})
         if df_home.isnull().sum().sum() > 0:
             log('error', f"Empty df_home [{df_home.isnull().sum().sum()}]: {df_home}")
             exit()
+        print("----------------------------------------------------------------------------------")
 
-    return home_histories
+    return home_histories, meta_histories
 
 
 def load_p2p_dataset(args, cluster_id, season, nb_homes=None):
@@ -530,7 +548,27 @@ def load_p2p_dataset(args, cluster_id, season, nb_homes=None):
     return dataset, input_shape, homes_ids
 
 
+def create_timeseries(dataset, look_back, keep_dim=True):
+    dataX, dataY = [], []
+    if keep_dim:
+        test = np.concatenate((dataset.X_train[-look_back:], dataset.X_test), axis=0)
+    else:
+        test = dataset.X_test
+    for i in range(len(test) - look_back):
+        dataX.append(test[i:(i + look_back), :])
+        dataY.append(test[i + look_back, -1])
+
+    return np.array(dataX), np.array(dataY).reshape(-1, 1)
+
+
 if __name__ == '__main__':
+    trainData = np.arange(700).reshape(100, 7)
+    print(np.reshape(trainData, (1,) + trainData.shape).shape)
+    exit()
+    testData = np.random.rand(100, 7)
+    trainX, trainY = create_timeseries(trainData, 5)
+    print(trainX.shape, trainY.shape)
+    exit()
     # update location first
     homeIds = ["00248d5f9ecd01a008b95d6f5a79688db7f8344c",
                '0031fe0263b18f5fd70c0e47892a5ad0daf5db2e',

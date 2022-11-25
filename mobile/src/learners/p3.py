@@ -18,7 +18,7 @@ name = "P3 Algorithm"
 def train_init(peer):
     peer.log('event', f'Starting collaborative training using {name} ...', remote=False)
     peer.log("info", f"Initializing Collaborative training...", remote=False)
-    r = peer.evaluate(peer.inference, one_batch=True)
+    r = peer.evaluate()
     peer.bridge.send(protocol.call_method("log_results", r))
     peer.params.logs = [r]
     peer.params.exchanges = 0
