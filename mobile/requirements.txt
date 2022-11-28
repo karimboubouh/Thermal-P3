@@ -1,12 +1,7 @@
-numpy~=1.23.3
+numpy==1.23.5
 joblib~=1.2.0
-termcolor~=1.1.0
+termcolor==2.1.1
 
-Kivy~=2.0.0
-kivymd~=0.104.2.dev0
-plyer~=2.0.0
-shinnosuke~=0.6.3
-tqdm~=4.64.0
-torch~=1.11.0
-torchvision~=0.12.0
-tensorflow~=2.9.1
+Kivy==2.1.0
+kivymd==1.1.1
+plyer==2.1.0

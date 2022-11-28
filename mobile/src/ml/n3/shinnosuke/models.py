@@ -1,16 +1,16 @@
-from tqdm import tqdm
-
-from .utils.Objectives import get_objective
-from .utils.Optimizers import get_optimizer
-from .utils.MiniBatch import get_batches
-import time
-import numpy as np
-import matplotlib.pyplot as plt
 import os
 import pickle
+import time
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+from .utils.MiniBatch import get_batches
+from .utils.Objectives import get_objective
+from .utils.Optimizers import get_optimizer
 
 
-class BaseModel():
+class BaseModel:
     def __init__(self):
         pass
 

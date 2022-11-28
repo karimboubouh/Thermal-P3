@@ -1,5 +1,6 @@
 import copy
 import os
+import time
 
 import numpy as np
 from .shinnosuke import layers as L, StochasticGradientDescent, Adam
@@ -80,7 +81,6 @@ def meta_train(i, model_file, train, batch_size, epochs=1):
 
 def train_for_x_epochs(peer, epochs=1, evaluate=False, use_tqdm=None, verbose=False):
     h1 = Map({'loss': [], 'rmse': [], 'mae': [], 'val_loss': [], 'val_rmse': [], 'val_mae': []})
-    T = tqdm(range(epochs), position=0) if use_tqdm else range(epochs)
     train = peer.dataset.generator.train
     test = peer.dataset.generator.test
     bsize = peer.params.batch_size
@@ -95,7 +95,9 @@ def train_for_x_epochs(peer, epochs=1, evaluate=False, use_tqdm=None, verbose=Fa
         h1.val_rmse.append(h['val_rmse'])
         h1.val_mae.append(h['val_mae'])
     else:
+        t = time.time()
         h = peer.model.fit(X, Y, validation_ratio=0, shuffle=False, epochs=epochs, batch_size=bsize, verbose=verbose)
+        print(f"{peer} training for {epochs} epochs took {(t - time.time()):5f} seconds.\n")
         h1.loss.append(h['loss'])
         h1.rmse.append(h['rmse'])
         h1.mae.append(h['mae'])

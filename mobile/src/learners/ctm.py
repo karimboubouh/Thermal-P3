@@ -1,46 +1,16 @@
 import numpy as np
-from tqdm import tqdm
 
 from src import protocol
 from src.conf import EVAL_ROUND, WAIT_TIMEOUT, WAIT_INTERVAL, ML_ENGINE
 from src.ml import GAR, model_inference
-from src.p2p import Graph, Node
-from src.utils import log, active_peers, wait_until, norm_squared
+from src.utils import active_peers, wait_until, norm_squared
 
 name = "Static Personalized P2P (SP3)"
 
 
 # ---------- Algorithm functions ----------------------------------------------
 
-def collaborate(graph: Graph, args):
-    log("info", f"Initializing Collaborative training...")
-    # init peers parameters
-    for peer in graph.peers:
-        peer.execute(train_init)
-    graph.join()
-
-    log("info", f"Collaborative training for T = {graph.args.rounds} rounds")
-    T = tqdm(range(graph.args.rounds), position=0)
-    for t in T:
-        for peer in graph.peers:
-            peer.execute(train_step, t)
-        graph.join(t)
-
-    # stop train
-    log("info", f"Evaluating the output of the collaborative training.")
-    for peer in graph.peers:
-        peer.execute(train_stop)
-    graph.join()
-    log('info', f"Graph G disconnected.")
-
-    # get collaboration logs
-    collab_logs = {peer.id: peer.params.logs for peer in graph.peers}
-    return collab_logs
-
-
-# ---------- Algorithm functions ----------------------------------------------
-
-def train_init(peer: Node):
+def train_init(peer):
     r = peer.evaluate()
     peer.params.logs = [r]
     peer.params.ar = 0  # acceptance_rate
@@ -55,7 +25,7 @@ def train_init(peer: Node):
 
 
 def train_step(peer, t):
-    T = t if isinstance(t, tqdm) or isinstance(t, range) else [t]
+    T = t if isinstance(t, range) else [t]
     for t in T:
         # train for E (one) epoch
         peer.train_one_epoch()  # weights ==> multiple epochs
@@ -69,9 +39,9 @@ def train_step(peer, t):
         wait_until(enough_received, WAIT_TIMEOUT, WAIT_INTERVAL, peer, t, len(active))
         if t not in peer.V:
             peer.V[t] = []
-            log('error', f"{peer} received no messages in round {t}.")
+            peer.log('error', f"{peer} received no messages in round {t}.")
         else:
-            log('log', f"{peer} got {len(peer.V[t])}/{len(active)} messages in round {t}.")
+            peer.log('log', f"{peer} got {len(peer.V[t])}/{len(active)} messages in round {t}.")
         # estimate \sigma in first round
         estimate_sigma(peer)
         # collaborativeUpdate
@@ -88,8 +58,6 @@ def train_stop(peer):
     model_inference(peer)
     acceptance_rate = round(peer.params.n_accept / peer.params.exchanges * 100, 2)
     peer.params.ar = acceptance_rate
-    # log('info',
-    # f"{peer} Acceptance rate for sigma=({peer.params.sigma}) DMedian( {np.median(peer.params.D)}): {acceptance_rate} %")
     peer.stop()
     return
 
@@ -117,11 +85,11 @@ def collaborativeUpdate(peer, t):
             avg = GAR(peer, accepted)
             return [peer.params.mu * vi_k + (1 - peer.params.mu) * avg[k] for k, vi_k in enumerate(vi)]
     else:
-        log('log', f"{peer}: No accepted gradients in round {t}")
+        peer.log('log', f"{peer}: No accepted gradients in round {t}")
         return vi
 
 
-def update_model(peer: Node, v, evaluate=False):
+def update_model(peer, v, evaluate=False):
     peer.set_model_params(v)
     # TODO Review update function
     # peer.take_step()
@@ -132,35 +100,15 @@ def update_model(peer: Node, v, evaluate=False):
 
 # ---------- Helper functions -------------------------------------------------
 
-def enough_received(peer: Node, t, size):
+def enough_received(peer, t, size):
     if t in peer.V and len(peer.V[t]) >= size:
         return True
     return False
 
 
-def estimate_sigma(peer: Node):
+def estimate_sigma(peer):
     if peer.params.sigma is None:
         sigma = np.median([norm_squared(peer.get_model_params(), vj) for _, vj in peer.V[0]])
         peer.params.sigma = round(2 * float(sigma), 2)
-        log('info', f"{peer} estimated sigma: {peer.params.sigma}")
+        peer.log('info', f"{peer} estimated sigma: {peer.params.sigma}")
     return
-
-
-"""
-    # OPTION I: Controlled training -------------------------------------------
-    T = tqdm(range(graph.args.rounds), position=0)
-    r = time.time()
-    for t in T:
-        for peer in graph.peers:
-            peer.execute(train_step, t)  # , graph.PSS
-        graph.join(t)
-    log("info", f"train_step took {(time.time() - r):.2f} seconds.")
-    
-    # OPTION II: Uncontrolled training ----------------------------------------
-    log("info", f"Collaborative training for T = {graph.args.rounds} rounds")
-    for peer in graph.peers:
-        T = tqdm(range(graph.args.rounds), position=0, desc=f"{peer}")
-        peer.execute(train_step, T)
-    graph.join()
-    
-"""

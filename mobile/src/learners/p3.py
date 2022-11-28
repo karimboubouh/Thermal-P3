@@ -1,7 +1,6 @@
 from heapq import nsmallest
 
 import numpy as np
-from tqdm import tqdm
 
 from src import protocol
 from src.conf import EVAL_ROUND, WAIT_TIMEOUT, WAIT_INTERVAL
@@ -35,7 +34,7 @@ def train_init(peer):
 
 
 def train_step(peer, t):
-    T = t if isinstance(t, tqdm) or isinstance(t, range) else [t]
+    T = t if isinstance(t, range) else [t]
     for t in T:
         # train for E (one) epoch
         peer.train_one_epoch()
@@ -52,8 +51,6 @@ def train_step(peer, t):
         # collaborativeUpdate
         w_t = collaborativeUpdateLight(peer, t)
         # update and evaluate the model
-        if isinstance(T, tqdm):
-            T.set_postfix_str(f"{peer} running evaluation in round {t}..." if (t % EVAL_ROUND) == 0 else "")
         # TODO Review update function
         update_model(peer, w_t, evaluate=(t % EVAL_ROUND == 0), t=t)
         # start accepting gradients from next round

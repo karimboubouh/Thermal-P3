@@ -18,7 +18,7 @@ if __name__ == '__main__':
     cluster_id = 0
     season = 'summer'
     args.model = "LSTM"
-    args.epochs = 1  # 5
+    args.epochs = 5  # 5
     args.batch_size = 64
     args.rounds = 10  # set rounds dynamic depending on the rmse of CL
     C.TIME_ABSTRACTION = "1H"

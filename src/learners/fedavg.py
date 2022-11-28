@@ -67,6 +67,7 @@ def train_step(peer: Node, t, args):
                 w_server = peer.V[t - 1][0][1]  # [round][n-message(0 in FL)][(id, W)]
                 peer.set_model_params(w_server)
             # Worker
+            print("train_step...")
             train_for_x_epochs(peer, epochs=peer.params.epochs, evaluate=False, use_tqdm=False)
             # train_for_x_batches(peer, batches=NB_BATCHES, evaluate=False, use_tqdm=False)
             server = peer.neighbors[-1]
