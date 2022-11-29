@@ -158,9 +158,9 @@ class Node(Thread):
     def train_one_epoch(self, batches=1, evaluate=False):
         return train_for_x_batches(self, batches, evaluate, use_tqdm=False)
 
-    def evaluate(self, one_batch=False):
+    def evaluate(self, one_batch=False, verbose=False):
         # return model_inference(self, batch_size=self.params.batch_size, one_batch=one_batch)
-        return evaluate_model(self, one_batch=one_batch, batch_size=self.params.batch_size)
+        return evaluate_model(self, one_batch=one_batch, batch_size=self.params.batch_size, verbose=verbose)
 
     def save_model(self):
         pass
@@ -246,6 +246,8 @@ class NodeConnection(Thread):
                         self.handle_step(data['data'])
                     elif data and data['mtype'] == protocol.CONNECT:
                         self.handle_connect(data['data'])
+                    elif data and data['mtype'] == protocol.DEVICE_LOGS:
+                        self.handle_logs(data['data'])
                     elif data and data['mtype'] == protocol.DISCONNECT:
                         self.handle_disconnect()
                     else:
@@ -295,6 +297,10 @@ class NodeConnection(Thread):
     def handle_connect(self, data):
         self.neighbor_id = data['id']
         self.address = data['address']
+
+    @staticmethod
+    def handle_logs(data):
+        log(data['typ'], data['txt'])
 
     def handle_disconnect(self):
         self.terminate = True

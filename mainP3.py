@@ -14,9 +14,10 @@ if __name__ == '__main__':
     # =================================
     args.mp = 1
     args.model = "LSTM"
+    args.learner = "sp3"
     args.batch_size = 64
-    args.epochs = 2  # 5
-    args.rounds = 100
+    args.epochs = 1  # 5
+    args.rounds = 50
     cluster_id = 0
     season = 'summer'
     C.TIME_ABSTRACTION = "1H"

@@ -191,8 +191,6 @@ class DeviceBridge(Thread):
 
     def send(self, msg):
         try:
-            if len(msg) > 10000:
-                print(f"msg={len(msg)}")
             if self.terminate:
                 log('log', f"{self} tries to send on terminated")
             length = struct.pack('>Q', len(msg))
@@ -278,8 +276,6 @@ class DeviceBridge(Thread):
     @staticmethod
     def handle_logs(data):
         log(data['typ'], data['txt'])
-        # todo remove
-        log("event", data['txt'])
 
     def handle_disconnect(self):
         if self in self.bridge.bridges:

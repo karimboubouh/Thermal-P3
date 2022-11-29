@@ -11,7 +11,8 @@ name = "Static Personalized P2P (SP3)"
 
 # ---------- Algorithm functions ----------------------------------------------
 
-def train_init(peer):
+def train_init(peer, args):
+    peer.log('warning', f"Learner :: {name}")
     r = peer.evaluate()
     peer.params.logs = [r]
     peer.bridge.send(protocol.call_method("log_results", r))

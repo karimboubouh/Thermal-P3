@@ -1,3 +1,5 @@
+from time import sleep
+
 import numpy as np
 from tqdm import tqdm
 
@@ -16,7 +18,7 @@ def collaborate(graph: Graph, args):
     log("info", f"Initializing Collaborative training...")
     # init peers parameters
     for peer in graph.peers:
-        peer.execute(train_init)
+        peer.execute(train_init, args)
     graph.join()
 
     log("info", f"Collaborative training for T = {graph.args.rounds} rounds")
@@ -35,13 +37,14 @@ def collaborate(graph: Graph, args):
 
     # get collaboration logs
     collab_logs = {peer.id: peer.params.logs for peer in graph.peers}
-
+    print(collab_logs[0])
+    print(collab_logs)
     return collab_logs
 
 
 # ---------- Algorithm functions ----------------------------------------------
 
-def train_init(peer: Node):
+def train_init(peer: Node, args):
     r = peer.evaluate()
     peer.params.logs = [r]
     peer.params.exchanges = 0
@@ -84,6 +87,8 @@ def train_step(peer, t):
 
 def train_stop(peer):
     model_inference(peer, one_batch=False)
+    log('info', f"{peer} disconnecting...")
+    sleep(1)
     peer.stop()
     return
 

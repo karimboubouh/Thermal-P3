@@ -1,6 +1,8 @@
+import time
+
 from src import protocol
 from src.conf import WAIT_TIMEOUT, WAIT_INTERVAL
-from src.ml import train_for_x_batches
+from src.ml import train_for_x_batches, train_for_x_epochs
 from src.utils import wait_until
 
 name = "Federated averaging (FedAvg)"
@@ -9,7 +11,7 @@ NB_BATCHES = 1
 
 
 def train_init(peer, args):
-    print(f"Done with init")
+    peer.log('warning', f"Learner :: {name}")
     peer.params.exchanges = 0
     return
 
@@ -17,17 +19,22 @@ def train_init(peer, args):
 def train_step(peer, t, args):
     T = t if isinstance(t, range) else [t]
     for t in T:
-        if t % 10 == 0:
-            peer.log('success', f"Round {t}/{len(T)} :: Local train for 1 epoch / {NB_BATCHES} batch(es)...",
-                     remote=False)
-
         if t > 0:
             wait_until(server_received, WAIT_TIMEOUT * 100, WAIT_INTERVAL * 10, peer, t)
             w_server = peer.V[t - 1][0][1]  # [round][n-message(0 in FL)][(id, W)]
             peer.set_model_params(w_server)
         # Worker
-        # train_for_x_epochs(peer, epochs=1)
-        train_for_x_batches(peer, batches=NB_BATCHES, evaluate=False)
+        # peer.log('error', f"{peer} :: train_step...", remote=True)
+        st = time.perf_counter()
+        if args.use_batches:
+            train_for_x_batches(peer, batches=NB_BATCHES, evaluate=False, use_tqdm=False)
+            et = time.perf_counter() - st
+            peer.log('success', f"Round {t} :: took {et:.4f}s to train {NB_BATCHES} batch(es).", remote=False)
+        else:
+            train_for_x_epochs(peer, epochs=peer.params.epochs, evaluate=False, use_tqdm=False)
+            et = time.perf_counter() - st
+            peer.log('success', f"Round {t} :: took {et:.4f}s to train {peer.params.epochs} epoch(s).", remote=False)
+
         msg = protocol.train_step(t, peer.get_model_params())  # not grads
         server = peer.neighbors[-1]
         peer.send(server, msg)
@@ -43,6 +50,7 @@ def update_model(peer, w, evaluate=False):
 
 
 def train_stop(peer, args):
+    time.sleep(1)
     peer.stop()
 
 

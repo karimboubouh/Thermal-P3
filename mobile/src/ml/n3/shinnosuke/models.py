@@ -1,8 +1,6 @@
-import os
 import pickle
 import time
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from .utils.MiniBatch import get_batches
@@ -127,16 +125,6 @@ class Sequential(BaseModel):
                     self.valid_loss.append(valid_loss)
                     self.valid_acc.append(valid_acc)
 
-                if draw_acc_loss:
-                    if len(self.train_loss) == 2:
-                        plt.ion()
-                        plt.figure(figsize=(6, 7))
-                        plt.title('batch-size=' + str(batch_size) + ',Epochs=' + str(epochs))
-                        ax1 = plt.subplot(2, 1, 1)
-                        ax2 = plt.subplot(2, 1, 2)
-                    if len(self.train_loss) > 1:
-                        self.draw_training(ax1, ax2, draw_save_path, epoch)
-
                 trained_process_bar_nums = batch_count * self.process_bar_nums // batch_nums
                 process_bar = self.process_bar_trained * trained_process_bar_nums + '>' + self.process_bar_untrain * (
                         self.process_bar_nums - trained_process_bar_nums - 1)
@@ -216,30 +204,7 @@ class Sequential(BaseModel):
             regular_loss = 0
             # for layer in self.layers:
             #     regular_loss+=layer.add_loss
-            return rmse, mae, mse
-
-    def draw_training(self, ax1, ax2, draw_save_path, epoch):
-        leg1 = ax1.get_legend()
-        ax1.plot(self.train_loss, color='blue', label='train')
-        if self.valid_loss:
-            ax1.plot(self.valid_loss, color='green', label='validation')
-        ax1.set_xlabel('iter')
-        ax1.set_ylabel('loss')
-        if leg1 is None:
-            ax1.legend(loc='best')
-        leg2 = ax2.get_legend()
-        ax2.plot(self.train_acc, color='red', label='train')
-        if self.valid_acc:
-            ax2.plot(self.valid_acc, color='yellow', label='validation')
-        ax2.set_xlabel('iter')
-        ax2.set_ylabel('acc')
-        if leg2 is None:
-            ax2.legend(loc='best')
-        plt.pause(0.1)
-        if draw_save_path is not None:
-            assert draw_save_path.__class__.__name__ == 'str'
-            draw_save_path = os.path.abspath(draw_save_path + '\\Epoch' + str(epoch))
-            plt.savefig(draw_save_path, dpi=300)
+            return mse, rmse, mae
 
     def pop(self, index=-1):
         layer = self.layers.pop(index)
@@ -446,16 +411,6 @@ class Model(BaseModel):
                     self.valid_loss.append(valid_loss)
                     self.valid_acc.append(valid_acc)
 
-                if draw_acc_loss:
-                    if len(self.train_loss) == 2:
-                        plt.ion()
-                        plt.figure(figsize=(6, 7))
-                        plt.title('batch-size=' + str(batch_size) + ',Epochs=' + str(epochs))
-                        ax1 = plt.subplot(2, 1, 1)
-                        ax2 = plt.subplot(2, 1, 2)
-                    if len(self.train_loss) > 1:
-                        self.draw_training(ax1, ax2, draw_save_path, epoch)
-
                 trained_process_bar_nums = batch_count * self.process_bar_nums // batch_nums
                 process_bar = self.process_bar_trained * trained_process_bar_nums + '>' + self.process_bar_untrain * (
                         self.process_bar_nums - trained_process_bar_nums - 1)
@@ -527,29 +482,6 @@ class Model(BaseModel):
             # for layer in self.layers:
             #     regular_loss+=layer.add_loss
         return acc, base_loss
-
-    def draw_training(self, ax1, ax2, draw_save_path, epoch):
-        leg1 = ax1.get_legend()
-        ax1.plot(self.train_loss, color='blue', label='train')
-        if self.valid_loss:
-            ax1.plot(self.valid_loss, color='green', label='validation')
-        ax1.set_xlabel('iter')
-        ax1.set_ylabel('loss')
-        if leg1 is None:
-            ax1.legend(loc='best')
-        leg2 = ax2.get_legend()
-        ax2.plot(self.train_acc, color='red', label='train')
-        if self.valid_acc:
-            ax2.plot(self.valid_acc, color='yellow', label='validation')
-        ax2.set_xlabel('iter')
-        ax2.set_ylabel('acc')
-        if leg2 is None:
-            ax2.legend(loc='best')
-        plt.pause(0.1)
-        if draw_save_path is not None:
-            assert draw_save_path.__class__.__name__ == 'str'
-            draw_save_path = os.path.abspath(draw_save_path + '\\Epoch' + str(epoch))
-            plt.savefig(draw_save_path, dpi=300)
 
     def pop(self, index=-1):
         layer = self.layers.pop(index)

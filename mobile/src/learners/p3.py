@@ -14,7 +14,8 @@ name = "P3 Algorithm"
 
 # ---------- Algorithm functions ----------------------------------------------
 
-def train_init(peer):
+def train_init(peer, args):
+    peer.log('warning', f"Learner :: {name}")
     peer.log('event', f'Starting collaborative training using {name} ...', remote=False)
     peer.log("info", f"Initializing Collaborative training...", remote=False)
     r = peer.evaluate()

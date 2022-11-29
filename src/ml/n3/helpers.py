@@ -147,13 +147,13 @@ def model_inference(peer, batch_size=16, one_batch=False):
     else:
         h = peer.model.evaluate(X, Y, batch_size=None)
     # rmse, mae, mse
-    history = Map({'loss': h[2], 'rmse': h[0], 'mae': h[1]})
+    history = Map({'loss': h[0], 'rmse': h[1], 'mae': h[2]})
     one = "[^]" if one_batch else "[*]"
-    log('result', f"Node {peer.id} Inference {one} MSE: {h[2]:4f} | RMSE: {h[0]:4f}, MAE: {h[1]:4f}")
+    log('result', f"Node {peer.id} Inference {one} MSE: {h[0]:4f} | RMSE: {h[1]:4f}, MAE: {h[2]:4f}")
     return history
 
 
-def evaluate_model(peer, one_batch=False, batch_size=64):
+def evaluate_model(peer, one_batch=False, batch_size=64, verbose=False):
     test = peer.dataset.generator.test
     X, Y = test['X'], test['Y']
     if one_batch:
@@ -164,6 +164,9 @@ def evaluate_model(peer, one_batch=False, batch_size=64):
         h = peer.model.evaluate(bX, bY, batch_size=None)
     else:
         h = peer.model.evaluate(X, Y, batch_size=None)
+
+    if verbose:
+        log('result', f"MSE: {h[0]:4f} | RMSE: {h[1]:4f}, MAE: {h[2]:4f}")
 
     return {'val_loss': h[0], 'val_rmse': h[1], 'val_mae': h[2]}
 

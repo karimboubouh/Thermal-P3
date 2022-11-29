@@ -1,11 +1,11 @@
 import copy
+import time
 
 import numpy as np
-from .shinnosuke import layers as L, StochasticGradientDescent
-from .shinnosuke.models import Sequential
-from tqdm import tqdm
 
 from .aggregators import average, median, aksel, krum
+from .shinnosuke import layers as L, StochasticGradientDescent
+from .shinnosuke.models import Sequential
 from ...helpers import Map
 
 
@@ -77,26 +77,31 @@ def meta_train(i, model_file, train, batch_size, epochs=1):
     return model, history
 
 
-def train_for_x_epochs(peer, epochs=1, verbose=0, evaluate=False):
-    h1 = Map({'loss': [], 'rmse': [], 'mae': []})
-    h2 = None
+def train_for_x_epochs(peer, epochs=1, evaluate=False, use_tqdm=None, verbose=False):
+    h1 = Map({'loss': [], 'rmse': [], 'mae': [], 'val_loss': [], 'val_rmse': [], 'val_mae': []})
     train = peer.dataset.generator.train
-    train = peer.dataset.generator.train
+    test = peer.dataset.generator.test
+    bsize = peer.params.batch_size
     X, Y = train['X'], train['Y']
-    peer.model.fit(X, Y, epochs=epochs, batch_size=peer.params.batch_size, log=peer.log)
-    h = list(peer.model.history.history.values())
-    h1.loss.append(h[0])
-    h1.rmse.append(h[1])
-    h1.mae.append(h[2])
+    val = (test['X'], test['Y'])
     if evaluate:
-        test = peer.dataset.generator.test
-        h = peer.model.evaluate(test, batch_size=peer.params.batch_size)
-        h2 = Map({'loss': h[0], 'rmse': h[1], 'mae': h[2]})
+        h = peer.model.fit(X, Y, validation_data=val, shuffle=False, epochs=epochs, batch_size=bsize, verbose=verbose)
+        h1.loss.append(h['loss'])
+        h1.rmse.append(h['rmse'])
+        h1.mae.append(h['mae'])
+        h1.val_loss.append(h['val_loss'])
+        h1.val_rmse.append(h['val_rmse'])
+        h1.val_mae.append(h['val_mae'])
+    else:
+        h = peer.model.fit(X, Y, validation_ratio=0, shuffle=False, epochs=epochs, batch_size=bsize, verbose=verbose)
+        h1.loss.append(h['loss'])
+        h1.rmse.append(h['rmse'])
+        h1.mae.append(h['mae'])
 
-    return Map({'train': h1, 'test': h2})
+    return h1
 
 
-def train_for_x_batches(peer, batches=1, evaluate=False):
+def train_for_x_batches(peer, batches=1, evaluate=False, use_tqdm=None):
     h1 = Map({'loss': [], 'rmse': [], 'mae': [], 'val_loss': [], 'val_rmse': [], 'val_mae': []})
     train = peer.dataset.generator.train
     test = peer.dataset.generator.test
@@ -138,9 +143,9 @@ def model_inference(peer, batch_size=16, one_batch=False):
     else:
         h = peer.model.evaluate(X, Y, batch_size=None)
     # rmse, mae, mse
-    history = Map({'loss': h[2], 'rmse': h[0], 'mae': h[1]})
+    history = Map({'loss': h[0], 'rmse': h[1], 'mae': h[2]})
     one = "[^]" if one_batch else "[*]"
-    peer.log('result', f"Node {peer.id} Inference {one} MSE: {h[2]:4f} | RMSE: {h[0]:4f}, MAE: {h[1]:4f}")
+    peer.log('result', f"Node {peer.id} Inference {one} MSE: {h[0]:4f} | RMSE: {h[1]:4f}, MAE: {h[2]:4f}")
     return history
 
 

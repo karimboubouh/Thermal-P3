@@ -6,7 +6,6 @@ import time
 from src.conf import TCP_SOCKET_BUFFER_SIZE
 
 _multiprocessing.sem_unlink = None
-import joblib
 import numpy as np
 from kivymd.toast import toast
 
@@ -61,28 +60,28 @@ def create_tcp_socket():
     return sock
 
 
-def mnist(path, binary=True):
-    try:
-        open(path, 'r')
-    except FileNotFoundError as e:
-        toast(str(e))
-        exit()
-    X_train, Y_train = joblib.load(path)
-    Y_train = Y_train.astype(int).reshape(-1, 1)
-    if binary:
-        # Extract 1 and 2 from train dataset
-        f1 = 1
-        f2 = 2
-        Y_train = np.squeeze(Y_train)
-        X_train = X_train[np.any([Y_train == f1, Y_train == f2], axis=0)]
-        Y_train = Y_train[np.any([Y_train == f1, Y_train == f2], axis=0)]
-        Y_train = Y_train - f1
-        Y_train = Y_train.reshape(-1, 1)
-    else:
-        Y_train = np.array([np.eye(1, 10, k=int(y)).reshape(10) for y in Y_train])
-    X_train = X_train / 255
-
-    return X_train, Y_train
+# def mnist(path, binary=True):
+#     try:
+#         open(path, 'r')
+#     except FileNotFoundError as e:
+#         toast(str(e))
+#         exit()
+#     X_train, Y_train = joblib.load(path)
+#     Y_train = Y_train.astype(int).reshape(-1, 1)
+#     if binary:
+#         # Extract 1 and 2 from train dataset
+#         f1 = 1
+#         f2 = 2
+#         Y_train = np.squeeze(Y_train)
+#         X_train = X_train[np.any([Y_train == f1, Y_train == f2], axis=0)]
+#         Y_train = Y_train[np.any([Y_train == f1, Y_train == f2], axis=0)]
+#         Y_train = Y_train - f1
+#         Y_train = Y_train.reshape(-1, 1)
+#     else:
+#         Y_train = np.array([np.eye(1, 10, k=int(y)).reshape(10) for y in Y_train])
+#     X_train = X_train / 255
+#
+#     return X_train, Y_train
 
 
 def sample_data(dataset, num_items):

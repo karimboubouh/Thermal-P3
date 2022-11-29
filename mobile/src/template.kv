@@ -63,7 +63,7 @@ ScreenManagement:
     name: 'conf'
     MDBoxLayout:
         orientation: "vertical"
-        MDToolbar:
+        MDTopAppBar:
             title: 'Join P2P Network'
             left_action_items: [["web"]]
         MDLabel:
@@ -169,7 +169,7 @@ ScreenManagement:
     # on_enter: root.init_train()
     MDBoxLayout:
         orientation: "vertical"
-        MDToolbar:
+        MDTopAppBar:
             title: 'Training'
             left_action_items: [["atom", lambda x: app.callback()]]
             elevation:8
@@ -198,7 +198,7 @@ ScreenManagement:
     name: 'predict'
     MDBoxLayout:
         orientation: "vertical"
-        MDToolbar:
+        MDTopAppBar:
             title: 'Training summary'
             left_action_items: [["switch", lambda x: app.callback()]]
             elevation:8

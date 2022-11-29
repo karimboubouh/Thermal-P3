@@ -1,3 +1,5 @@
+from time import sleep
+
 from tqdm import tqdm
 
 from src import protocol
@@ -47,7 +49,6 @@ def train_init(peer: Node, args):
         r = peer.evaluate()
         peer.params.logs = [r]
         peer.params.models = {i: [] for i in range(args.rounds)}
-
     return
 
 
@@ -67,9 +68,8 @@ def train_step(peer: Node, t, args):
                 w_server = peer.V[t - 1][0][1]  # [round][n-message(0 in FL)][(id, W)]
                 peer.set_model_params(w_server)
             # Worker
-            print("train_step...")
-            train_for_x_epochs(peer, epochs=peer.params.epochs, evaluate=False, use_tqdm=False)
-            # train_for_x_batches(peer, batches=NB_BATCHES, evaluate=False, use_tqdm=False)
+            # train_for_x_epochs(peer, epochs=peer.params.epochs, evaluate=False, use_tqdm=False)
+            train_for_x_batches(peer, batches=NB_BATCHES, evaluate=False, use_tqdm=False)
             server = peer.neighbors[-1]
             msg = protocol.train_step(t, peer.get_model_params())  # not grads
             peer.send(server, msg)
@@ -80,13 +80,17 @@ def train_step(peer: Node, t, args):
 def update_model(peer: Node, w, evaluate=False):
     peer.set_model_params(w)
     if evaluate:
-        t_eval = peer.evaluate()
+        t_eval = peer.evaluate(verbose=True)
         peer.params.logs.append(t_eval)
 
 
 def train_stop(peer: Node, args):
     if peer.id == args.server_id:
-        model_inference(peer, one_batch=True)
+        h = model_inference(peer, one_batch=False)
+        history = f"{peer} :: MSE: {h['loss']:4f} | RMSE: {h['rmse']:4f}, MAE: {h['mae']:4f}"
+        peer.broadcast(protocol.log('result', history))
+        # only edge will receive if it waits for ~1 sec
+        sleep(1)
     peer.stop()
 
 

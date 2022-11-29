@@ -1,10 +1,10 @@
 [app]
 
 # (str) Title of your application
-title = P3 ML
+title = Thermal P3
 
 # (str) Package name
-package.name = p3
+package.name = thermal_p3
 
 # (str) Package domain (needed for android/ios packaging)
 package.domain = ma.um6p
@@ -37,7 +37,7 @@ version = 0.1
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
 #requirements = sqlite3,pillow,python3,kivy==2.0.0,git+https://github.com/HeaTTheatR/KivyMD.git,sdl2_ttf==2.0.15,numpy,joblib,tqdm
-requirements = python3,pillow,kivy,kivymd,sdl2_ttf,numpy,joblib,tqdm
+requirements = python3,kivy,kivymd,sdl2_ttf,numpy,termcolor
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes
@@ -70,7 +70,7 @@ orientation = all
 osx.python_version = 3
 
 # Kivy version to use
-osx.kivy_version = 2.0.0
+osx.kivy_version = 2.1.0
 
 #
 # Android specific

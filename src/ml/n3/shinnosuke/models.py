@@ -214,7 +214,7 @@ class Sequential(BaseModel):
             regular_loss = 0
             # for layer in self.layers:
             #     regular_loss+=layer.add_loss
-            return rmse, mae, mse
+            return mse, rmse, mae
 
     def draw_training(self, ax1, ax2, draw_save_path, epoch):
         leg1 = ax1.get_legend()

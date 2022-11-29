@@ -6,10 +6,11 @@ from copy import deepcopy
 from importlib import import_module
 from threading import Thread
 
-from kivymd.toast import toast
+from kivymd.toast import toast as kivy_toast
+from kivy.clock import mainthread
 
+import src.conf as C
 from src import protocol
-from src.conf import SOCK_TIMEOUT, TCP_SOCKET_SERVER_LISTEN, ALGORITHM_MODULE
 from src.ml import model_fit, model_inference, train_for_x_epochs, evaluate_model, get_params, set_params, \
     train_for_x_batches
 from src.ml.numpy.datasets import get_local_data
@@ -65,12 +66,12 @@ class Node(Thread):
             except socket.timeout:
                 pass
             except Exception as e:
-                toast(f"Node Exception: {e}")
+                self.toast(f"Node Exception: {e}")
 
         for neighbor in self.neighbors:
             neighbor.stop()
         self.sock.close()
-        toast(f"Node Stopped")
+        self.toast(f"Node Stopped")
 
     def log(self, typ, txt, end="", remote=True):
         if remote:
@@ -81,13 +82,13 @@ class Node(Thread):
     def connect_bridge(self, bridge_host, bridge_port):
         try:
             sock = create_tcp_socket()
-            sock.settimeout(SOCK_TIMEOUT)
+            sock.settimeout(C.SOCK_TIMEOUT)
             sock.connect((bridge_host, bridge_port))
             self.bridge = Bridge(self, sock)
             self.bridge.start()
             return True
         except Exception as e:
-            toast(f"Cannot connect to bridge\n{e}")
+            self.toast(f"Cannot connect to bridge\n{e}")
             return False
 
     def connect(self, nid, host, port):
@@ -95,7 +96,7 @@ class Node(Thread):
             if nid in [n.neighbor_id for n in self.neighbors]:
                 return True
             sock = create_tcp_socket()
-            sock.settimeout(SOCK_TIMEOUT)
+            sock.settimeout(C.SOCK_TIMEOUT)
             sock.connect((host, port))
             neighbor_conn = NodeConnection(self, nid, sock)
             neighbor_conn.start()
@@ -103,7 +104,7 @@ class Node(Thread):
             self.neighbors.append(neighbor_conn)
             return {'s': True, 'm': f"Connected to Node({nid})"}
         except Exception as e:
-            toast(f"Cannot connect to Node({nid}, <{host}, {port}>)\n{e}")
+            self.toast(f"Cannot connect to Node({nid}, <{host}, {port}>)\n{e}")
             print(f"Cannot connect to Node({nid}, <{host}, {port}>)\n{e}")
             return {'s': False, 'm': f"{self} could not connect to Node({nid}): {e}"}
 
@@ -113,7 +114,7 @@ class Node(Thread):
             neighbor_conn.terminate = True
             if neighbor_conn in self.neighbors:
                 self.neighbors.remove(neighbor_conn)
-            toast(f"Disconnected from {neighbor_conn}")
+            self.toast(f"Disconnected from {neighbor_conn}")
 
     def stop(self):
         for neighbor in self.neighbors:
@@ -195,6 +196,10 @@ class Node(Thread):
             scope = scope.union(neighbor.local_data_scope())
         return list(scope)
 
+    @mainthread
+    def toast(self, text):
+        kivy_toast(text)
+
     #  Private methods --------------------------------------------------------
 
     def _eval_sample(self, sample):
@@ -203,8 +208,8 @@ class Node(Thread):
     def _init_server(self):
         self.sock = create_tcp_socket()
         self.sock.bind((self.host, self.port))
-        self.sock.settimeout(SOCK_TIMEOUT)
-        self.sock.listen(TCP_SOCKET_SERVER_LISTEN)
+        self.sock.settimeout(C.SOCK_TIMEOUT)
+        self.sock.listen(C.TCP_SOCKET_SERVER_LISTEN)
         self.port = self.sock.getsockname()[1]
 
     # Special methods
@@ -241,6 +246,8 @@ class NodeConnection(Thread):
                         self.handle_step(data['data'])
                     elif data and data['mtype'] == protocol.CONNECT:
                         self.handle_connect(data['data'])
+                    elif data and data['mtype'] == protocol.DEVICE_LOGS:
+                        self.handle_logs(data['data'])
                     elif data and data['mtype'] == protocol.DISCONNECT:
                         self.handle_disconnect(data['data'])
                     else:
@@ -291,6 +298,9 @@ class NodeConnection(Thread):
         self.neighbor_id = data['id']
         self.address = data['address']
 
+    def handle_logs(self, data):
+        self.log(data['typ'], data['txt'])
+
     def handle_disconnect(self, data):
         self.terminate = True
         if self in self.node.neighbors:
@@ -325,7 +335,7 @@ class Bridge(Thread):
                     to_read = length - len(buffer)
                     buffer += self.sock.recv(4096000 if to_read > 4096000 else to_read)
                     if len(buffer) > 409600:
-                        toast(f"Buffer={len(buffer)}")
+                        self.toast(f"Buffer={len(buffer)}")
                 if buffer:
                     data = pickle.loads(buffer)
                     if data and data['mtype'] == protocol.CALL_METHOD:
@@ -359,9 +369,9 @@ class Bridge(Thread):
             self.sock.sendall(msg)
         except socket.error as e:
             self.terminate = True
-            toast('error', f"Bridge Socket error: {e}: ")
+            self.toast('error', f"Bridge Socket error: {e}: ")
         except Exception as e:
-            toast('error', f"Bridge send Exception\n{e}")
+            self.toast('error', f"Bridge send Exception\n{e}")
 
     def send_pref(self, request_data, share_logs):
         msg = protocol.preferences({'host': self.device.host, 'port': self.device.port, 'request_data': request_data,
@@ -396,9 +406,9 @@ class Bridge(Thread):
                 self.device.test = test
                 self.device.inference = inference
             except MemoryError as e:
-                toast(f"MemoryError:  {e}")
+                self.toast(f"MemoryError:  {e}")
             except Exception as e:
-                toast(f"Exception:  {e}")
+                self.toast(f"Exception:  {e}")
         if info.get('args', None):
             self.device.params = Map({
                 'epochs': info['args']['epochs'],
@@ -426,12 +436,14 @@ class Bridge(Thread):
     def method_execute(self, d):
         try:
             if self.learner is None:
-                self.learner = import_module(f'src.learners.{ALGORITHM_MODULE}', __name__)
-                print(f"Loading learner :: {ALGORITHM_MODULE}")
+                if 'learner' in d['args'][0]:
+                    C.ALGORITHM_MODULE = d['args'][0]['learner']
+                self.learner = import_module(f'src.learners.{C.ALGORITHM_MODULE}', __name__)
+                print(f"Loading learner :: {C.ALGORITHM_MODULE}")
             func_name = getattr(self.learner, d['method'].replace('execute.', ''))
             func_name(self.device, *d['args'], **d['kwargs'])
         except ModuleNotFoundError as e:
-            toast(f"call_method: {d['method']} >> {e}")
+            self.toast(f"call_method: {d['method']} >> {e}")
             self.send(protocol.return_method(d['method'], {'s': False, 'm': e}))
         self.send(protocol.return_method(d['method'], {'s': True}))
 
@@ -442,6 +454,10 @@ class Bridge(Thread):
 
     def stop(self):
         self.terminate = True
+
+    @mainthread
+    def toast(self, text):
+        kivy_toast(text)
 
     def __repr__(self):
         return f"Bridge"

@@ -14,13 +14,15 @@ if __name__ == '__main__':
     """
     args = load_conf(use_cpu=False)
     # Configuration ------------------>
-    args.mp = 0
+    args.mp = 1
     cluster_id = 0
     season = 'summer'
     args.model = "LSTM"
-    args.epochs = 5  # 5
+    args.learner = "sp3"
+    args.epochs = 1  # 5
+    args.use_batches = False
     args.batch_size = 64
-    args.rounds = 10  # set rounds dynamic depending on the rmse of CL
+    args.rounds = 4  # set rounds dynamic depending on the rmse of CL
     C.TIME_ABSTRACTION = "1H"
     C.RECORD_PER_HOUR = 1
     resample = False if C.TIME_ABSTRACTION is None else True
@@ -33,7 +35,7 @@ if __name__ == '__main__':
     dataset, input_shape, homes_ids = load_p2p_dataset(args, cluster_id, season, nb_homes=10)  # , nb_homes=10
     models = initialize_models(args.model, input_shape=input_shape, nbr_models=len(dataset), same=True)
     topology = central_graph(models)
-    edge = edge_devices(args, count=0)
+    edge = edge_devices(args, count=1)
     graph = network_graph(topology, models, dataset, homes_ids, args, edge=edge)
     # graph.show_neighbors()
     # graph.show_similarity(ids=True)
