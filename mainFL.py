@@ -18,11 +18,11 @@ if __name__ == '__main__':
     cluster_id = 0
     season = 'summer'
     args.model = "LSTM"
-    args.learner = "sp3"
+    args.learner = "fedavg"
     args.epochs = 1  # 5
     args.use_batches = False
     args.batch_size = 64
-    args.rounds = 4  # set rounds dynamic depending on the rmse of CL
+    args.rounds = 20  # set rounds dynamic depending on the rmse of CL
     C.TIME_ABSTRACTION = "1H"
     C.RECORD_PER_HOUR = 1
     resample = False if C.TIME_ABSTRACTION is None else True

@@ -8,10 +8,10 @@ BRIDGE_PORT = 19491
 # ML change configuration here
 ML_ENGINE = "N3"  # "N3", "TensorFlow", "NumPy", "PyTorch"
 
-ALGORITHM_MODULE = "fedavg"  # "ctm", "p3", "sp3", "fedavg"
+ALGORITHM_MODULE = "sp3"  # "ctm", "p3", "sp3", "fedavg"
 WAIT_TIMEOUT = 10
 WAIT_INTERVAL = 0.1
-EVAL_ROUND = 5
+EVAL_ROUND = 10
 VERBOSE = 1
 
 TRAIN_VAL_TEST_RATIO = [.8, .1, .1]

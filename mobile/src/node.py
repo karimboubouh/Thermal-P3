@@ -436,8 +436,10 @@ class Bridge(Thread):
     def method_execute(self, d):
         try:
             if self.learner is None:
-                if 'learner' in d['args'][0]:
+                if isinstance(d['args'][0], dict) and 'learner' in d['args'][0]:
                     C.ALGORITHM_MODULE = d['args'][0]['learner']
+                elif isinstance(d['args'][1], dict) and 'learner' in d['args'][1]:
+                    C.ALGORITHM_MODULE = d['args'][1]['learner']
                 self.learner = import_module(f'src.learners.{C.ALGORITHM_MODULE}', __name__)
                 print(f"Loading learner :: {C.ALGORITHM_MODULE}")
             func_name = getattr(self.learner, d['method'].replace('execute.', ''))

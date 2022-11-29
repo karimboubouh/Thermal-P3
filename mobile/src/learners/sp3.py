@@ -1,6 +1,4 @@
 import numpy as np
-from tqdm import tqdm
-
 from src import protocol
 from src.conf import EVAL_ROUND, WAIT_TIMEOUT, WAIT_INTERVAL, ML_ENGINE
 from src.ml import GAR, model_inference
@@ -27,7 +25,7 @@ def train_init(peer, args):
 
 
 def train_step(peer, t):
-    T = t if isinstance(t, tqdm) or isinstance(t, range) else [t]
+    T = t if isinstance(t, range) else [t]
     for t in T:
         # train for E (one) epoch
         peer.train_one_epoch()  # weights ==> multiple epochs
