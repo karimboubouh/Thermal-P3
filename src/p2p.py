@@ -51,6 +51,7 @@ class Node(Thread):
             'D': sum(self.similarity.values()),
             'confidence': 1,
             'alpha': 0.9,
+            'batches': args.batches,
         })
         # override params if provided
         if isinstance(params, Map):
@@ -144,6 +145,7 @@ class Node(Thread):
             # set local model variable
             self.local_model = self.model
         else:
+            # return Map({'train': None, 'test': None})
             train_history = model_fit(self)
             # set local model variable
             self.local_model = self.model
@@ -292,7 +294,10 @@ class NodeConnection(Thread):
             if data['t'] in self.node.V:
                 self.node.V[data['t']].append((self.neighbor_id, data['update']))
             else:
+                # TODO remove this line after simulations
                 self.node.V[data['t']] = [(self.neighbor_id, data['update'])]
+                # nb_homes = 207
+                # self.node.V[data['t']] = [(self.neighbor_id, data['update'])] * nb_homes
 
     def handle_connect(self, data):
         self.neighbor_id = data['id']
@@ -382,7 +387,7 @@ class Graph:
     @staticmethod
     # @measure_energy
     # @profiler
-    # @timeit
+    @timeit
     def centralized_training(args, cluster_id=0, season='summer', resample=False, predict=False, n_ahead=1,
                              n_step_predict=False, hval=False, meta=True):
         log('warning', f'ML engine: {C.ML_ENGINE}')
@@ -437,6 +442,7 @@ class Graph:
 
     # @measure_energy
     # @profiler
+    @timeit
     def local_training(self, inference=True, one_batch=False):
         t = time.time()
         log('event', 'Starting local training ...')

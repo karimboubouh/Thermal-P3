@@ -248,6 +248,7 @@ class DeviceBridge(Thread):
         msg = protocol.call_method(method, *args, **kwargs)
         self.send(msg)
         self.current_exec = method
+        # self.wait_method(method)
 
     def wait_method(self, method):
         done = wait_until(self.return_method, C.FUNC_TIMEOUT, 1, method)

@@ -86,7 +86,7 @@ class Sequential(BaseModel):
         else:
             valid_X, valid_Y = validation_data
             train_X, train_Y = X, Y
-
+        train_time = time.time()
         for epoch in range(epochs):
             mini_batches = get_batches(train_X, train_Y, batch_size, epoch, shuffle)
             batch_nums = len(mini_batches)
@@ -145,25 +145,26 @@ class Sequential(BaseModel):
                         # T.set_postfix_str(
                         #     f"-batch_loss: {batch_loss:.4f} -batch_acc: {batch_acc:.4f} -val_loss: {valid_loss:.4f} -val_acc: {valid_acc:.4f}")
                         log(
-                            '\33[33m{:d}/{:d} [{}] -{} -{}/batch -batch_loss: {:.4f} -batch_rmse: {:.4f} -val_loss: {:.4f} -val_acc: {:.4f}\33[0m'.format(
+                            "'\r\33[33m{:d}/{:d} [{}] -{} -{}/batch -batch_loss: {:.4f} -batch_rmse: {:.4f} -val_loss: {:.4f} -val_acc: {:.4f}\33[0m".format(
                                 trained_nums, training_size, process_bar, self.format_time(gap),
                                 self.format_time(gap / batch_count), batch_loss, batch_acc, valid_loss, valid_acc),
-                            end='\r')
+                            end='')
                     else:
                         log(
-                            '\33[33m{:d}/{:d} [{}] -{} -{}/batch -batch_loss: {:.4f} -batch_rmse: {:.4f}\33[0m'.format(
+                            "'\r\33[33m{:d}/{:d} [{}] -{} -{}/batch -batch_loss: {:.4f} -batch_rmse: {:.4f}\33[0m".format(
                                 trained_nums, training_size, process_bar, self.format_time(gap),
                                 self.format_time(gap / batch_count), batch_loss, batch_acc), end='')
             if verbose:
                 log()
-        t_rmse, t_mae, t_mse = self.evaluate(train_X, train_Y, batch_size=None)
+        # log(f"\33[35mModel finished training after {(time.time() - train_time):.4f} seconds\33[0m")
+        t_mse, t_rmse, t_mae = self.evaluate(train_X, train_Y, batch_size=None)
         train_history['loss'].append(t_mse)
         train_history['rmse'].append(t_rmse)
         train_history['mae'].append(t_mae)
         if verbose:
             log(f"\33[34mTrain      >> MSE : {t_mse:.4f}, RMSE : {t_rmse:.4f}, MAE : {t_mae:.4f}\33[0m")
         if validation_data is not None:
-            v_rmse, v_mae, v_mse = self.evaluate(valid_X, valid_Y, batch_size=None)
+            v_mse, v_rmse, v_mae = self.evaluate(valid_X, valid_Y, batch_size=None)
             train_history['val_loss'].append(v_mse)
             train_history['val_rmse'].append(v_rmse)
             train_history['val_mae'].append(v_mae)

@@ -8,7 +8,8 @@ MAX_FREQ="3.6Ghz"
 AVG_FREQ="1.9Ghz"
 MIN_FREQ="1.2Ghz"
 IDLE_TIME=60
-AVG_IDLE_POWER=12.75
+AVG_IDLE_POWER=12.85
+AVG_IDLE_GPU_POWER=5.5
 STD_IDLE_POWER=0.25
 
 cecho() {
@@ -42,6 +43,8 @@ usage() {
   cecho D "Provide additional arguments to the --exec command." "\t\t"
   cecho GREEN "-c | --cpu" "\n\t"
   cecho D "IDs of CPU to shield. For example: -c 0 or --cpu 1-3. (defaults to 0)" "\t\t"
+  cecho GREEN "-g | --gpu" "\n\t"
+  cecho D "To monitor the GPU power demand use -g 1 (defaults to -g 0)" "\t\t"
   cecho GREEN "-p | --performance" "\n\t"
   cecho D "Performance profile of the shielded CPUs. Three values are accepted:" "\t\t"
   cecho D "max: for MAX_FREQ, set frequency of shielded CPUs to $MAX_FREQ." "\t\t\t"
@@ -63,6 +66,7 @@ usage() {
 process_arguments() {
   # Define default values for optional arguments
   export cpu=${cpu:-0}
+  export gpu=${gpu:--1}
   export delay=${delay:-10}
   export performance=${performance:-"max"} # max/min/avg/ondemand
   export args=${args:-""}                  # no arguments
@@ -81,6 +85,10 @@ process_arguments() {
       ;;
     -c | --cpu)
       export cpu=$2
+      shift
+      ;;
+    -g | --gpu)
+      export gpu=$2
       shift
       ;;
     -p | --performance)
@@ -115,6 +123,7 @@ process_arguments() {
 args_parser() {
   # Define default values
   export cpu=${cpu:-0}
+  export gpu=${cpu:--1}
   export delay=${delay:-10}
   export performance=${performance:-"max"} # max/min/avg
   export runs=${runs:-10}
@@ -172,64 +181,105 @@ configure_cpu_performance() {
 
 idle_powerstat() {
   cecho GREEN "******************** IDLE POWER USAGE ********************************\n" "\n"
-  cecho D "Calculating power usage of the CPUs in idle state for $IDLE_TIME seconds ..."
+  cecho D "Calculating power usage of the CPUs::$cpu in idle state for $IDLE_TIME seconds ..."
   idle_file="./out/${UUID}_${performance}/idle.log"
-  powerstat 1 $IDLE_TIME -Rf 2>&1 | tee $idle_file
+  idle_gpu_file="./out/${UUID}_${performance}/idle_gpu.log"
+  # powerstat 1 $IDLE_TIME -Rf 2>&1 | tee $idle_file
+  if [[ $gpu -ge 0 ]]; then
+    cecho YELLOW "Calculating power usage of GPU::$gpu in idle state for $IDLE_TIME seconds ..."
+    nvidia-smi dmon -i $gpu -s p -c $IDLE_TIME -f "$idle_gpu_file" &
+  fi
+  powerstat 1 $IDLE_TIME -Rf 2>&1 > "$idle_file"
   #  powerstat 1 $IDLE_TIME -Rf >$idle_file
   avgIdle=($(grep "Average" $idle_file | grep -Eo '[0-9]+([.][0-9]+)?' | tail -2))
   stdIdle=($(grep "StdDev" $idle_file | grep -Eo '[0-9]+([.][0-9]+)?' | tail -2))
-  cecho GREEN "Average Idle Power      : ${avgIdle[0]} Watts; (StdDev of ${stdIdle[0]} Watts)."
-  cecho GREEN "Average Frequency       : ${avgIdle[1]} Ghz; (StdDev of ${stdIdle[1]} Ghz)."
+  cecho GREEN "Average CPU Idle Power      : ${avgIdle[0]} Watts; (StdDev of ${stdIdle[0]} Watts)."
+  cecho GREEN "Average CPU Frequency       : ${avgIdle[1]} Ghz; (StdDev of ${stdIdle[1]} Ghz)."
   avgJIdle=$(echo "${avgIdle[0]} * $IDLE_TIME" | bc)
   stdJIdle=$(echo "${stdIdle[0]} * $IDLE_TIME" | bc)
-  cecho YELLOW "Average Energy consumed : $avgJIdle J; (StdDev of $stdJIdle J)."
+  cecho YELLOW "Average CPU Energy consumed : $avgJIdle J; (StdDev of $stdJIdle J)."
+  if [[ $gpu -ge 0 ]]; then
+    cecho BLUE "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - "
+    avgGpuIdle=$(tail -n +3 "$idle_gpu_file" | awk '{ total += $2; count++ } END { print total/count }')
+    cecho GREEN "Average GPU Idle Power       : $avgGpuIdle Watts."
+    avgGpuJIdle=$(echo "$avgGpuIdle * $IDLE_TIME" | bc)
+    cecho YELLOW "Average GPU Energy consumed : $avgGpuJIdle J."
+  fi
+
 }
 
 multi_run() {
   # Default Idle power usage if idle_powerstat() was not executed.
-  avgIP=${avgIdleWW[0]:-$AVG_IDLE_POWER}
-  stdIP=${stdIdleWW[0]:-$STD_IDLE_POWER}
+  avgIP=${avgIdle[0]:-$AVG_IDLE_POWER}
+  avgGpuIP=${avgGpuIdle:-$AVG_IDLE_GPU_POWER}
+  stdIP=${stdIdle[0]:-$STD_IDLE_POWER}
   # List of execution times
   T=()
-  # List of average power usages
+  # List of average CPU power usages
   P=()
-  # List of average power usages
+  # List of average CPU power usages per program
   PP=()
   # List of average CPU frequencies
   F=()
-  # List of energy consumptions
+  # List of energy CPU consumptions
   E=()
+  if [[ $gpu -ge 0 ]]; then
+    # List of average GPU power usages
+    G=()
+    # List of average GPU power usages per program
+    GG=()
+    # List of energy GPU consumptions
+    GE=()
+  fi
 
   for ((i = 1; i <= runs; i++)); do
     cecho GREEN "******************** RUN Nº $i ****************************************\n" "\n"
-    run_program "$i" "$avgIP"
+    run_program "$i" "$avgIP" "$avgGpuIP"
     T+=("$elapsed")
     P+=("${avg[0]}")
     PP+=("$program_power")
     F+=("${avg[1]}")
     E+=("$program_energy")
+  if [[ $gpu -ge 0 ]]; then
+    G+=("$avgGpu")
+    GG+=("$program_gpu_power")
+    GE+=("$program_gpu_energy")
+  fi
     cecho CYAN "Program running for round $i ended in $elapsed seconds."
   done
   printf "\n\n"
   cecho GREEN "  Experiment results summary: " "\t"
-  cecho BLUE "-----------------------------------------------"
+  cecho BLUE "----------------------------------------------------"
   avg_time=$(average "${T[@]}")
   stdJtime=$(echo "$stdIP * $avg_time" | bc)
-  cecho YELLOW "Average Execution Time      : $avg_time seconds."
-  cecho CYAN "Average Power Usage         : $(average "${P[@]}") Watts."
-  cecho CYAN "Average Program Power Usage : $(average "${PP[@]}") Watts."
-  cecho YELLOW "Average CPU Frequency       : $(average "${F[@]}") GHz."
-  cecho CYAN "Average Energy Consumed     : $(average "${E[@]}") (+- $stdJtime) Joules."
-  cecho BLUE "-----------------------------------------------"
+  cecho YELLOW "Average Execution Time          : $avg_time seconds."
+  cecho CYAN "Average CPU Power Usage         : $(average "${P[@]}") Watts."
+  cecho CYAN "Average CPU Program Power Usage : $(average "${PP[@]}") Watts."
+  if [[ $gpu -ge 0 ]]; then
+    cecho CYAN "Average GPU Power Usage         : $(average "${G[@]}") Watts."
+    cecho CYAN "Average GPU Program Power Usage : $(average "${GG[@]}") Watts."
+  fi
+  cecho YELLOW "Average CPU Frequency           : $(average "${F[@]}") GHz."
+  cecho CYAN "Average CPU Energy Consumed     : $(average "${E[@]}") (+- $stdJtime) Joules."
+  if [[ $gpu -ge 0 ]]; then
+    cecho CYAN "Average GPU Energy Consumed     : $(average "${GE[@]}")  Joules."
+  fi
+  cecho BLUE "----------------------------------------------------"
 }
 
 run_program() {
   idleP=$2
+  idleGpuP=$3
   cecho D "Waiting for $delay seconds before starting the execution ..."
   filename="./out/${UUID}_${performance}/execution_$1.log"
+  gpu_filename="./out/${UUID}_${performance}/execution_gpu_$1.log"
   powerstat 1 600000 -Rf -d "$delay" >"$filename" &
   pPid=$!
   sleep "$delay"
+  if [[ $gpu -ge 0 ]]; then
+    nvidia-smi dmon -i $gpu -s p -f "$gpu_filename" &
+    gPid=$!
+  fi
   #  start_time=$(date +%s.%6N)
   start_time=$(date +%s)
   sudo -E env PATH=$PATH cset shield --exec $exec -- $args
@@ -239,20 +289,36 @@ run_program() {
   elapsed=$(echo "scale=6; $end_time - $start_time" | bc)
   kill -SIGTERM $pPid
   kill -SIGQUIT $pPid
+  if [[ $gpu -ge 0 ]]; then
+    kill -SIGTERM $gPid
+    kill -SIGQUIT $gPid
+  fi
   sleep 1
   printf "\n"
   avg=($(grep "Average" $filename | grep -Eo '[0-9]+([.][0-9]+)?' | tail -2))
   std=($(grep "StdDev" $filename | grep -Eo '[0-9]+([.][0-9]+)?' | tail -2))
-  cecho GREEN "Average Frequency                      : ${avg[1]} Ghz; (StdDev of ${std[1]} Ghz)."
-  cecho GREEN "Average Power usage                    : ${avg[0]} Watts; (StdDev of ${std[0]} Watts)."
+  cecho GREEN "Average CPU Frequency                      : ${avg[1]} Ghz; (StdDev of ${std[1]} Ghz)."
+  cecho GREEN "Average CPU Power usage                    : ${avg[0]} Watts; (StdDev of ${std[0]} Watts)."
   avgJ=$(echo "${avg[0]} * $elapsed" | bc)
   stdJ=$(echo "${std[0]} * $elapsed" | bc)
-  cecho GREEN "Average Energy consumed                : $avgJ J; (StdDev of $stdJ J)."
+  cecho GREEN "Average CPU Energy consumed                : $avgJ J; (StdDev of $stdJ J)."
+  if [[ $gpu -ge 0 ]]; then
+    avgGpu=$(tail -n +3 "$gpu_filename" | awk '{ total += $2; count++ } END { print total/count }')
+    cecho BLUE "Average GPU Power usage                    : $avgGpu Watts."
+    avgGpuJ=$(echo "$avgGpu * $elapsed" | bc)
+    cecho BLUE "Average GPU Energy consumed                : $avgGpuJ J."
+  fi
   printf "\n"
   program_power=$(echo "${avg[0]} - $idleP" | bc)
   program_energy=$(echo "$program_power * $elapsed" | bc)
-  cecho YELLOW "Average Power usage of the program     : $program_power Watts; (StdDev of ${std[0]} Watts)."
-  cecho YELLOW "Average Energy consumed by the program : $program_energy J; (StdDev of $stdJ J)."
+  cecho YELLOW "Average CPU Power usage of the program     : $program_power Watts; (StdDev of ${std[0]} Watts)."
+  cecho YELLOW "Average CPU Energy consumed by the program : $program_energy J; (StdDev of $stdJ J)."
+  if [[ $gpu -ge 0 ]]; then
+    program_gpu_power=$(echo "$avgGpu - $idleGpuP" | bc)
+    program_gpu_energy=$(echo "$program_gpu_power * $elapsed" | bc)
+    cecho BLUE "Average GPU Power usage of the program     : $program_gpu_power Watts."
+    cecho BLUE "Average GPU Energy consumed by the program : $program_gpu_energy J."
+  fi
 }
 
 reset_configurations() {

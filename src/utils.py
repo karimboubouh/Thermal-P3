@@ -4,11 +4,19 @@ import os
 import pickle
 import random
 import socket
+import struct
+import fcntl
 import time
+from collections import Counter
 from inspect import getframeinfo, currentframe
 from itertools import combinations
 
+from sklearn.preprocessing import MinMaxScaler
+
+
+import netifaces
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from scipy.spatial import distance
 from termcolor import cprint
@@ -60,6 +68,8 @@ def args_parser():
                          average, median, krum, aksel')
     parser.add_argument('--epochs', type=int, default=4,
                         help="the number of local epochs: E")
+    parser.add_argument('--batches', type=int, default=1,
+                        help="the number of collaborative learning batches: E")
     parser.add_argument('--batch_size', type=int, default=128,
                         help="batch size: B")
     parser.add_argument('--lr', type=float, default=0.01,
@@ -345,16 +355,35 @@ def get_node_conn_by_id(node, node_id):
     return None
 
 
-def get_ip_address():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.settimeout(10)
-    try:
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
-    except OSError:
-        return socket.gethostbyname(socket.gethostname())
-    finally:
-        s.close()
+def ip4_addresses(inter="all"):
+    if inter == "all":
+        ip4_list = []
+        for interface in netifaces.interfaces():
+            if netifaces.AF_INET in netifaces.ifaddresses(interface):
+                ip4_list.append({interface: netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']})
+        return ip4_list
+    else:
+        try:
+            return netifaces.ifaddresses(inter)[netifaces.AF_INET][0]['addr']
+        except ValueError as e:
+            print(f"Error: {e}\nSelect one of these interfaces {netifaces.interfaces()}")
+        except KeyError:
+            print(f"Error: Network interface {inter} has no IPv4 address.")
+
+
+def get_ip_address(inter=C.NETWORK_INTERFACE):
+    if inter:
+        return ip4_addresses(inter)
+    else:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(10)
+        try:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+        except OSError:
+            return socket.gethostbyname(socket.gethostname())
+        finally:
+            s.close()
 
 
 def labels_set(dataset):
@@ -424,3 +453,18 @@ def nb_pred_steps(pred, period: str):
         steps = None
 
     return steps
+
+
+def get_homes_metadata(home_ids, filename="meta_data.csv", normalize=False):
+    meta_file = os.path.join(C.DATA_DIR, filename)
+    df = pd.read_csv(meta_file, usecols=C.META_CLUSTER_COLUMNS)
+    meta = df.to_numpy()
+    _, indices, _ = np.intersect1d(meta[:, 0], list(home_ids), return_indices=True)
+    meta_abs = meta[indices][:, 1:]
+    meta_ids = meta[indices][:, 0]
+
+    if normalize:
+        scaler = MinMaxScaler()
+        meta_abs = scaler.fit_transform(meta_abs)
+
+    return {meta_ids[i]: meta_abs[i] for i in range(len(meta_ids))}

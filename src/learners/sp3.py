@@ -37,8 +37,6 @@ def collaborate(graph: Graph, args):
 
     # get collaboration logs
     collab_logs = {peer.id: peer.params.logs for peer in graph.peers}
-    print(collab_logs[0])
-    print(collab_logs)
     return collab_logs
 
 
@@ -61,7 +59,7 @@ def train_step(peer, t):
     T = t if isinstance(t, tqdm) or isinstance(t, range) else [t]
     for t in T:
         # train for E (one) epoch
-        peer.train_one_epoch()  # weights ==> multiple epochs
+        peer.train_one_epoch(batches=peer.params.batches)  # weights ==> multiple epochs
         # train_for_x_epoch(peer, 10)
         # broadcast current model to all my active neighbors
         active = active_peers(peer.neighbors, peer.params.frac)
@@ -86,7 +84,8 @@ def train_step(peer, t):
 
 
 def train_stop(peer):
-    model_inference(peer, one_batch=False)
+    h = model_inference(peer, one_batch=False)
+    peer.params.logs.append(h)
     log('info', f"{peer} disconnecting...")
     sleep(1)
     peer.stop()

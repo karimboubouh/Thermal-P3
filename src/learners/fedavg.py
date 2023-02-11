@@ -4,7 +4,8 @@ from tqdm import tqdm
 
 from src import protocol
 from src.conf import EVAL_ROUND, WAIT_TIMEOUT, WAIT_INTERVAL
-from src.ml import model_inference, GAR, train_for_x_batches, train_for_x_epochs
+from src.helpers import timeit
+from src.ml import model_inference, GAR, train_for_x_epochs, train_for_x_batches
 from src.p2p import Graph, Node
 from src.utils import log, wait_until
 
@@ -57,14 +58,14 @@ def train_step(peer: Node, t, args):
     for t in T:
         if peer.id == args.server_id:
             # Server
-            wait_until(enough_received, WAIT_TIMEOUT * 100, WAIT_INTERVAL * 10, peer, t, len(peer.neighbors))
+            wait_until(enough_received, WAIT_TIMEOUT * 100, WAIT_INTERVAL, peer, t, len(peer.neighbors))
             w = GAR(peer, [v for i, v in peer.V[t]])
             update_model(peer, w, evaluate=(t % EVAL_ROUND == 0))
             msg = protocol.train_step(t, peer.get_model_params())  # not grads
             peer.broadcast(msg)
         else:
             if t > 0:
-                wait_until(server_received, WAIT_TIMEOUT * 100, WAIT_INTERVAL * 10, peer, t)
+                wait_until(server_received, WAIT_TIMEOUT * 100, WAIT_INTERVAL / 10, peer, t)
                 w_server = peer.V[t - 1][0][1]  # [round][n-message(0 in FL)][(id, W)]
                 peer.set_model_params(w_server)
             # Worker
@@ -81,6 +82,7 @@ def update_model(peer: Node, w, evaluate=False):
     peer.set_model_params(w)
     if evaluate:
         t_eval = peer.evaluate(verbose=True)
+        print(t_eval)
         peer.params.logs.append(t_eval)
 
 
@@ -103,6 +105,8 @@ def enough_received(peer: Node, t, size):
 
 
 def server_received(peer: Node, t):
-    if t - 1 in peer.V and len(peer.V[t - 1]) == 1:
+    # if t - 1 in peer.V and len(peer.V[t - 1]) == 1:
+    # TODO remove after finishing simulations
+    if t - 1 in peer.V and len(peer.V[t - 1]) >= 1:
         return True
     return False

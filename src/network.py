@@ -2,10 +2,10 @@ import time
 from itertools import combinations
 from time import sleep
 from typing import List
-
 import numpy as np
 from scipy.spatial import distance
 
+from src.helpers import timeit
 from src.p2p import Node, Graph
 from src.utils import cluster_peers, similarity_matrix, node_topology, log
 
@@ -53,6 +53,61 @@ def full_graph(models):
     clusters = {0: np.arange(nb_nodes)}
     similarities = np.ones((nb_nodes, nb_nodes))
     similarities[np.diag_indices_from(similarities)] = 0
+    return {
+        'clusters': clusters,
+        'similarities': similarities,
+        'adjacency': similarities != 0
+    }
+
+
+def metadata_graph(metadata: dict, rho=0.2, dist="euclidian", limit=0, mode="inverse"):
+    log('warning', f"Network topology: rho={rho} | limit={limit} | dist={dist}")
+    matrix = []
+    if dist == "euclidian":
+        for home_id in metadata:
+            matrix.append([np.linalg.norm(metadata[home_id] - metadata[neighbor_id]) for neighbor_id in metadata])
+    elif dist == "cosine":
+        for home_id in metadata:
+            matrix.append([distance.cosine(metadata[home_id], metadata[neighbor_id]) for neighbor_id in metadata])
+    elif dist == "hamming":
+        for home_id in metadata:
+            matrix.append([distance.hamming(metadata[home_id], metadata[neighbor_id]) for neighbor_id in metadata])
+    else:
+        raise NotImplemented()
+    matrix = np.array(matrix)
+    maxd = np.max(matrix)
+    matrix[np.diag_indices_from(matrix)] = maxd
+
+    normalized = (matrix - np.min(matrix)) / (np.max(matrix) - np.min(matrix))
+    # change rho from similarity to distance
+    # rho = 1 - rho
+    for n in normalized:
+        min_v = np.min(n)
+        min_i = list(n).index(min_v)
+        n[n > rho] = 1
+        if np.min(n) == 1:
+            n[min_i] = min_v
+    similarities = 1.0 - normalized
+
+    if 0 < limit < len(similarities[0]):
+        rate = len(similarities[0]) - limit
+        for s in similarities:
+            small_indices = s.argsort()[:rate]
+            s[small_indices] = 0
+    clusters = {0: np.arange(len(similarities[0]))}
+    m = [sum(1 for x in s if x > 0) for s in similarities]
+    log('event', f"Network density: Peers have on average {np.mean(m)}(+-{np.std(m):.2f}) neighbors.")
+    return {
+        'clusters': clusters,
+        'similarities': similarities,
+        'adjacency': similarities != 0
+    }
+
+
+def disconnected_graph(models):
+    nb_nodes = len(models)
+    clusters = {i: i for i in range(nb_nodes)}
+    similarities = np.zeros((nb_nodes, nb_nodes))
     return {
         'clusters': clusters,
         'similarities': similarities,
@@ -109,6 +164,7 @@ def datasim_network(data, sigma=0.2):
     return adjacency, similarities
 
 
+@timeit
 def network_graph(topology, models, dataset, home_ids, args, edge=None):
     nbr_nodes = len(home_ids)
     clustered = True if len(topology['clusters']) > 1 else False

@@ -1,15 +1,13 @@
-import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from matplotlib import style
 from pandas import DataFrame
-import pandas as pd
-from scipy.interpolate import interp1d
 
-from src import conf
 from src.conf import EVAL_ROUND
 from src.helpers import Map
-from src.utils import log, verify_metrics, load
+from src.utils import verify_metrics, load
 
 # matplotlib.use('TkAgg')
 # matplotlib.use('Agg')
@@ -99,6 +97,42 @@ def plot_train_history(logs, metric='accuracy', measure="mean", info=None, plot_
         plt.fill_between(x, data - std_data, data + std_data, alpha=.2)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
+
+    if save_fig:
+        unique = np.random.randint(100, 999)
+        plt.savefig(f"./out/EXP_{unique}.pdf")
+
+    plt.show()
+
+
+def plot_many_train_history(logs, save_fig=False):
+    colors = ['blue', 'orange', 'black', 'purple', 'red', 'grey', 'tan', 'pink', 'navy', 'aqua']
+
+    # prepare data
+    data = []
+    std_data = []
+    for log in logs:
+        if isinstance(log["data"], str):
+            log_data = load(log["data"])
+        else:
+            log_data = log["data"]
+        ld = [[ll["val_rmse"] for ll in lg] for lg in log_data.values()]
+        data.append(np.mean(ld, axis=0))
+        std_data.append(np.std(ld, axis=0))
+    # plot
+    x = range(0, len(data[0]) * EVAL_ROUND, EVAL_ROUND)
+    for i, d in enumerate(data):
+        plt.plot(x, d, label=logs[i]["label"], color=colors[i])
+        plt.fill_between(x, d - std_data[i] / 2, d + std_data[i] / 2, alpha=.2)
+    # Configs
+    xlabel = 'Rounds'
+    ylabel = f' Mean Test RMSE'
+    plt.grid(linestyle='dashed')
+    plt.legend(loc="best", shadow=True)
+    plt.xlabel(xlabel, fontsize=13)
+    plt.xticks(fontsize=13, )
+    plt.ylabel(ylabel, fontsize=13)
+    plt.yticks(fontsize=13, )
 
     if save_fig:
         unique = np.random.randint(100, 999)
@@ -339,11 +373,11 @@ if __name__ == '__main__':
     plot_n_steps_day(result_05min, result_15min, result_30min, result_1hour)
     exit()
 
-    plot_n_steps_day(result_30min, title="Resolution 30min")
+    # plot_n_steps_day(result_30min, title="Resolution 30min")
 
-    plot_n_steps_day(result_15min, title="Resolution 15min")
+    # plot_n_steps_day(result_15min, title="Resolution 15min")
 
-    plot_n_steps_day(result_05min, title="Resolution 5min")
+    # plot_n_steps_day(result_05min, title="Resolution 5min")
 
     # result_05min = {
     #     'test': [],

@@ -8,7 +8,7 @@ from .shinnosuke.models import Sequential, Model
 
 from tqdm import tqdm
 from .aggregators import average, median, aksel, krum
-from ...helpers import Map
+from ...helpers import Map, timeit
 from ...utils import log
 from tqdm.keras import TqdmCallback
 
@@ -36,7 +36,7 @@ def build_model(model_name, input_shape: tuple, n_outputs=1):
     input_shape = (None,) + input_shape
     model = Sequential()
     if model_name == 'RNN':
-        model.add(L.SimpleRNN(100, activation='tanh', input_shape=input_shape))
+        model.add(L.SimpleRNN(100, activation='relu', input_shape=input_shape))
     elif model_name == 'LSTM':
         model.add(L.LSTM(100, activation='tanh', input_shape=input_shape))
     elif model_name == 'DNN':
@@ -64,7 +64,6 @@ def model_fit(peer, tqdm_bar=False):
     h = list(history.values())
     log('result',
         f"Node {peer.id} Train MSE: {h[0][-1]:4f}, RMSE: {h[1][-1]:4f} | MAE {h[2][-1]:4f}")
-
     return history
 
 
@@ -95,9 +94,9 @@ def train_for_x_epochs(peer, epochs=1, evaluate=False, use_tqdm=None, verbose=Fa
         h1.val_rmse.append(h['val_rmse'])
         h1.val_mae.append(h['val_mae'])
     else:
-        t = time.time()
+        # t = time.time()
         h = peer.model.fit(X, Y, validation_ratio=0, shuffle=False, epochs=epochs, batch_size=bsize, verbose=verbose)
-        print(f"{peer} training for {epochs} epochs took {(t - time.time()):5f} seconds.\n")
+        # print(f"{peer} training for {epochs} epochs took {(time.time() - t):5f} seconds.")
         h1.loss.append(h['loss'])
         h1.rmse.append(h['rmse'])
         h1.mae.append(h['mae'])

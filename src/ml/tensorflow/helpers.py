@@ -1,17 +1,17 @@
-import copy
 import os
 
+import keras.backend as K
 import numpy as np
 import tensorflow as tf
-import keras.backend as K
 from keras import layers as L
 from keras.models import Sequential
 from keras.saving.save import load_model
 from tqdm import tqdm
+from tqdm.keras import TqdmCallback
+
 from .aggregators import average, median, aksel, krum
 from ...helpers import Map
 from ...utils import log
-from tqdm.keras import TqdmCallback
 
 
 def initialize_models(model_name, input_shape, n_outputs=1, cpu=False, nbr_models=1, same=False):
@@ -72,7 +72,7 @@ def model_fit(peer, tqdm_bar=False):
     else:
         # , validation_data=val
         peer.model.fit(train, epochs=peer.params.epochs, validation_data=val, batch_size=peer.params.batch_size,
-                       verbose=1)
+                       verbose=0)
     history = peer.model.history.history
     h = list(history.values())
     log('result',
@@ -92,7 +92,7 @@ def meta_train(i, model_file, train, batch_size, epochs=1):
     return model, history
 
 
-def train_for_x_epochs(peer, epochs=1, verbose=0, evaluate=False):
+def train_for_x_epochs(peer, epochs=1, verbose=0, evaluate=False, use_tqdm=False):
     h1 = Map({'loss': [], 'rmse': [], 'mae': []})
     h2 = None
     train = peer.dataset.generator.train
@@ -118,8 +118,8 @@ def train_for_x_batches(peer, batches=1, evaluate=False, use_tqdm=True):
         batch = np.random.choice(len(train), 1)
         X, y = train[batch]
         h = peer.model.train_on_batch(X, y, reset_metrics=False, return_dict=False)
-        if h[1] > 1:
-            log('error', f"{peer} | h={h} | y={y}, batch={batch}")
+        # if h[1] > 1:
+        #     log('error', f"{peer} | h={h} | y={y}, batch={batch}")
         h1.loss.append(h[0])
         h1.rmse.append(h[1])
         h1.mae.append(h[2])
@@ -149,7 +149,7 @@ def model_inference(peer, batch_size=16, one_batch=False):
     return history
 
 
-def evaluate_model(peer, one_batch=False, batch_size=64):
+def evaluate_model(peer, one_batch=False, batch_size=64, verbose=False):
     test = peer.dataset.generator.test
     if one_batch:
         batch = np.random.choice(len(test), 1)
@@ -276,4 +276,3 @@ def n_steps_model_predict(model, dataset, steps, use_pred=True):
     print()
 
     return np.array(preds)
-

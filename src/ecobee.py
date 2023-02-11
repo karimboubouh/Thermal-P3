@@ -154,12 +154,25 @@ def read_ecobee_cluster(cluster_id=0, season=None, resample=False):
     elif isinstance(season, list):
         seasons = season
 
-    folder = os.path.join(C.DATA_CLUSTERS_DIR, f"cluster_{cluster_id}")
-    for s in seasons:
-        file = os.path.join(folder, f"{s}.csv")
-        cluster[s] = pd.read_csv(file, sep=',', index_col='time', parse_dates=True)
-        if resample:
-            cluster[s] = cluster[s].resample(C.TIME_ABSTRACTION).mean().sort_index()
+    if cluster_id is None:
+        if season.lower() not in seasons:
+            log('error', f'Wrong season name: {season}. Please pick only one from {seasons}')
+            exit()
+        cluster[season] = pd.DataFrame()
+        for cid in range(6):
+            folder = os.path.join(C.DATA_CLUSTERS_DIR, f"cluster_{cid}")
+            file = os.path.join(folder, f"{season}.csv")
+            df = pd.read_csv(file, sep=',', index_col='time', parse_dates=True)
+            cluster[season] = pd.concat([cluster[season], df], axis=0)
+            if resample:
+                cluster[season] = cluster[season].resample(C.TIME_ABSTRACTION).mean().sort_index()
+    else:
+        folder = os.path.join(C.DATA_CLUSTERS_DIR, f"cluster_{cluster_id}")
+        for s in seasons:
+            file = os.path.join(folder, f"{s}.csv")
+            cluster[s] = pd.read_csv(file, sep=',', index_col='time', parse_dates=True)
+            if resample:
+                cluster[s] = cluster[s].resample(C.TIME_ABSTRACTION).mean().sort_index()
 
     return cluster
 
@@ -528,14 +541,37 @@ def evaluate_cluster_model(model, cluster_id, season='summer', scope="all", batc
     return home_histories, meta_histories
 
 
-def load_p2p_dataset(args, cluster_id, season, nb_homes=None):
-    folder = os.path.join(C.DATA_CLUSTERS_DIR, f"cluster_{cluster_id}")
-    cfile = os.path.join(folder, f"homes.csv")
-    if isinstance(nb_homes, int):
-        homes_ids = list(pd.read_csv(cfile)["ids"].values)[:nb_homes]
+@timeit
+def load_p2p_dataset(args, cluster_id, season, resample=True, nb_homes=None, rand=True):
+    if cluster_id is None:
+        homes = pd.DataFrame()
+        for cid in range(6):  # Go over all 6 clusters
+            folder = os.path.join(C.DATA_CLUSTERS_DIR, f"cluster_{cid}")
+            file = os.path.join(folder, f"homes.csv")
+            df = pd.read_csv(file)
+            homes = pd.concat([homes, df], axis=0)
+        if isinstance(nb_homes, int):
+            if rand:
+                log('info', f"Loading {nb_homes} homes randomly.")
+                homes_ids = np.random.choice(list(homes["ids"].values), nb_homes, replace=False)
+            else:
+                log('info', f"Loading first {nb_homes} homes.")
+                homes_ids = list(homes["ids"].values)[:nb_homes]
+        else:
+            log('info', f"Loading all {len(homes['ids'])} homes.")
+            homes_ids = list(homes["ids"].values)
     else:
-        homes_ids = list(pd.read_csv(cfile)["ids"].values)
-    homes_pd: dict = get_ecobee_by_home_ids(homes_ids, season=season, resample=True)
+        folder = os.path.join(C.DATA_CLUSTERS_DIR, f"cluster_{cluster_id}")
+        cfile = os.path.join(folder, f"homes.csv")
+        if isinstance(nb_homes, int):
+            if rand:
+                homes_ids = np.random.choice(list(pd.read_csv(cfile)["ids"].values), nb_homes, replace=False)
+            else:
+                homes_ids = list(pd.read_csv(cfile)["ids"].values)[:nb_homes]
+        else:
+            homes_ids = list(pd.read_csv(cfile)["ids"].values)
+
+    homes_pd: dict = get_ecobee_by_home_ids(homes_ids, season=season, resample=resample)
 
     n_input = 24 * C.RECORD_PER_HOUR
     n_features = len(C.DF_CLUSTER_COLUMNS)
