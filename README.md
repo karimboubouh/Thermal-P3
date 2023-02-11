@@ -1,27 +1,26 @@
 # On the Energy Efficiency of P2P Personalized Machine Learning using Mobile Devices
 
-This repository contains the code to run simulations for the "*On the Advantages of P2P ML on Mobile Devices*" paper, submitted in *ACM e-Energy 2022* conference.
-The repository includes the implementation of the P3 algorithm on a simulated environment, and the implementation of the P3 algorithm on Android.
+This repository contains the code to run simulations for the "*An Efficient and Accurate Personalized Peer-to-Peer Machine Learning Approach for Home Thermal Modeling*" paper, submitted in *ACM e-Energy 2022* conference.
+The repository includes the implementation of the Thermal P3 algorithm on a simulated environment, and the implementation of the P3 algorithm on Android devices.
 
 ### Requirements
 
 | Package     | Version |
-|-------------|---------|
-| python      | 3.7     |
-| pytorch     | 1.9.1   |
-| torchvision | 0.10.1  |
-| numpy       | 1.21.3  |
+|-------------|--------|
+| python      | 3.10   |
+| Tensorflow  | 2.9.1  |
+| numpy       | 1.23.3 |
 
 ### Data
 
-We use the MNIST dataset for energy analysis and model evaluation but implementation supports also CIFAR10. Datasets will be downloaded automatically in the `/data` folder with the first run of the algorithm. 
+We use the Ecobee dataset for energy analysis and model evaluation. Datasets should be downloaded to the `/data` folder with the first run of the algorithm. 
 
 ### ML Engine
 
-We have implemented the code to run on two ML engines. `Pytorch` based ML models and `Numpy` based models to support ML training on android devices.
+We have implemented the code to run on two ML engines. `Tensorflow` based ML models and `Numpy` (N3) based models to support ML training on android devices.
 To configure the ML Engine, update the following line in `src/conf.py` 
 ``
-ML_ENGINE = "PyTorch"  # "NumPy" or "PyTorch"
+ML_ENGINE = "Tensorflow"  # "N3" or "Tensorflow"
 ``
 **NB:** Android implementation does not support PyTorch.
 
@@ -31,9 +30,9 @@ ML_ENGINE = "PyTorch"  # "NumPy" or "PyTorch"
 
 To build the random topology of the P2P network, we use the graph density parameter `rho` to estimate the number of neighbors for each nodes. In our experiments, we use the following:
 
-- For 10 peers: `rho=0.4`
+- For 10 peers: `rho=0.05`
 - For 100 peers: `rho=0.8`
-- For 300 peers: `rho=0.95`
+- For 200 peers: `rho=0.95`
 
 The main algorithm parameters are the following:
 
