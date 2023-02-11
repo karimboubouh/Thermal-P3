@@ -1,4 +1,4 @@
-# On the Energy Efficiency of P2P Personalized Machine Learning using Mobile Devices
+# An Efficient and Accurate Personalized Peer-to-Peer Machine Learning Approach for Home Thermal Modeling
 
 This repository contains the code to run simulations for the "*An Efficient and Accurate Personalized Peer-to-Peer Machine Learning Approach for Home Thermal Modeling*" paper, submitted in *ACM e-Energy 2022* conference.
 The repository includes the implementation of the Thermal P3 algorithm on a simulated environment, and the implementation of the P3 algorithm on Android devices.
